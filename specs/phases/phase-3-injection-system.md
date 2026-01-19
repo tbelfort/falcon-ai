@@ -401,7 +401,7 @@ export function computeAttributionConfidence(
  *   * recencyWeight
  */
 export function computeInjectionPriority(
-  pattern: PatternDefinition,
+  pattern: PatternDefinition & { _crossProjectPenalty?: boolean },
   taskProfile: TaskProfile,
   stats: PatternStats,
   flags?: { suspectedSynthesisDrift?: boolean }
@@ -434,11 +434,16 @@ export function computeInjectionPriority(
     ? computeRecencyWeight(stats.lastSeenActive)
     : 0.8;
 
+  // v1.2: Cross-project penalty - patterns from other projects are slightly downweighted
+  // Main spec Section 5.1: crossProjectPenalty = 0.05, applied as (1 - 0.05) = 0.95x
+  const crossProjectPenalty = pattern._crossProjectPenalty ? 0.95 : 1.0;
+
   // Use severityMax for injection priority (v1.0: reflects worst observed impact)
   return attributionConfidence
     * severityWeight[pattern.severityMax]
     * relevanceWeight
-    * recencyWeight;
+    * recencyWeight
+    * crossProjectPenalty;
 }
 
 function computeRecencyWeight(lastSeen: string): number {
@@ -633,18 +638,24 @@ export interface InjectionResult {
  * See Spec Section 5.1.
  *
  * Algorithm:
- * 1. Select up to 2 baseline principles (3 if low confidence taskProfile)
- * 2. Select up to 3 security patterns
- * 3. Fill remaining slots with highest-priority non-security patterns
- * 4. Cap at 6 total for warnings
- * 5. Low-confidence fallback
- * 6. v1.0: Add provisional alerts (ADDITIVE - do not count against maxTotal)
+ * 1. Select baseline principles from WORKSPACE level
+ * 2. Select derived principles from WORKSPACE level
+ * 3. Select learned patterns from PROJECT level
+ * 4. Optional: Cross-project patterns (if enabled)
+ * 5. Select ProvisionalAlerts (project-scoped)
+ * 6. Cap at 6 total for warnings
+ * 7. Low-confidence fallback
+ *
+ * v1.1: Updated for hierarchical scoping (workspace → project)
  */
 export function selectWarningsForInjection(
   db: Database,
+  workspaceId: string,
+  projectId: string,
   target: 'context-pack' | 'spec',
   taskProfile: TaskProfile,
-  maxTotal: number = 6
+  maxTotal: number = 6,
+  options: { crossProjectWarnings?: boolean } = {}
 ): InjectionResult {
   const patternRepo = new PatternDefinitionRepository(db);
   const occurrenceRepo = new PatternOccurrenceRepository(db);
@@ -655,20 +666,25 @@ export function selectWarningsForInjection(
   const selectedAlerts: InjectedAlert[] = [];
 
   // ========================================
-  // STEP 1: Select baseline principles
+  // STEP 1: Select baseline principles (WORKSPACE level)
+  // v1.1 CHANGED: Guarantee 1 baseline slot (not 2), to give derived principles airtime
   // ========================================
 
-  const maxPrinciples = taskProfile.confidence < 0.5 ? 3 : 2;
+  // v1.1: Take exactly 1 baseline (or 2 if low confidence fallback)
+  const maxBaselines = taskProfile.confidence < 0.5 ? 2 : 1;
 
-  const eligiblePrinciples = principleRepo.findActive({ origin: 'baseline' })
-    .filter(p =>
-      (p.injectInto === target || p.injectInto === 'both') &&
-      p.touches.some(t => taskProfile.touches.includes(t as typeof taskProfile.touches[number]))
-    );
+  // v1.1: Query baseline principles at workspace level
+  const eligibleBaselines = principleRepo.findActive({
+    workspaceId,
+    origin: 'baseline'
+  }).filter(p =>
+    (p.injectInto === target || p.injectInto === 'both') &&
+    p.touches.some(t => taskProfile.touches.includes(t as typeof taskProfile.touches[number]))
+  );
 
   // v1.0: Deterministic tie-breaking for baselines
   // Sort by: touchOverlapCount DESC, id ASC
-  const selectedPrinciples = eligiblePrinciples
+  const selectedBaselines = eligibleBaselines
     .map(p => ({
       principle: p,
       touchOverlapCount: p.touches.filter(t =>
@@ -683,10 +699,10 @@ export function selectWarningsForInjection(
       // Tie-breaker: id ASC (deterministic)
       return a.principle.id.localeCompare(b.principle.id);
     })
-    .slice(0, maxPrinciples)
+    .slice(0, maxBaselines)
     .map(x => x.principle);
 
-  for (const principle of selectedPrinciples) {
+  for (const principle of selectedBaselines) {
     selected.push({
       type: 'principle',
       id: principle.id,
@@ -696,17 +712,111 @@ export function selectWarningsForInjection(
   }
 
   // ========================================
-  // STEP 2: Get eligible patterns
+  // STEP 1.5: Select derived principles (WORKSPACE level)
+  // v1.1 CHANGED: Derived principles get their own GUARANTEED slot
   // ========================================
 
-  const allPatterns = patternRepo.findActive({ carrierStage: target });
+  // v1.1: Query derived principles at workspace level
+  const derivedPrinciples = principleRepo.findActive({
+    workspaceId,
+    origin: 'derived'
+  }).filter(p =>
+    (p.injectInto === target || p.injectInto === 'both') &&
+    p.touches.some(t => taskProfile.touches.includes(t as typeof taskProfile.touches[number]))
+  );
+
+  // v1.1 CHANGED: Derived principles get guaranteed slot (not leftovers)
+  // Sort by: touchOverlap DESC, confidence DESC, updatedAt DESC, id ASC
+  const selectedDerived = derivedPrinciples
+    .map(p => ({
+      principle: p,
+      touchOverlapCount: p.touches.filter(t =>
+        taskProfile.touches.includes(t as typeof taskProfile.touches[number])
+      ).length
+    }))
+    .sort((a, b) => {
+      // Primary: touchOverlapCount DESC
+      if (b.touchOverlapCount !== a.touchOverlapCount) {
+        return b.touchOverlapCount - a.touchOverlapCount;
+      }
+      // Secondary: confidence DESC
+      if (b.principle.confidence !== a.principle.confidence) {
+        return b.principle.confidence - a.principle.confidence;
+      }
+      // Tertiary: updatedAt DESC (more recent first)
+      const aTime = new Date(a.principle.updatedAt).getTime();
+      const bTime = new Date(b.principle.updatedAt).getTime();
+      if (bTime !== aTime) {
+        return bTime - aTime;
+      }
+      // Tie-breaker: id ASC (stable)
+      return a.principle.id.localeCompare(b.principle.id);
+    })
+    .slice(0, 1)  // v1.1: Take exactly 1 derived (guaranteed slot)
+    .map(x => x.principle);
+
+  for (const principle of selectedDerived) {
+    selected.push({
+      type: 'principle',
+      id: principle.id,
+      priority: principle.confidence,
+      content: principle
+    });
+  }
+
+  // ========================================
+  // STEP 2: Get eligible patterns (PROJECT level)
+  // ========================================
+
+  // v1.1: Query patterns at project level
+  const allPatterns = patternRepo.findActive({
+    workspaceId,
+    projectId,
+    carrierStage: target
+  });
 
   // Filter by task profile match
-  const matchingPatterns = allPatterns.filter(p =>
+  let matchingPatterns = allPatterns.filter(p =>
     p.touches.some(t => taskProfile.touches.includes(t)) ||
     p.technologies.some(t => taskProfile.technologies.includes(t)) ||
     p.taskTypes.some(t => taskProfile.taskTypes.includes(t))
   );
+
+  // ========================================
+  // STEP 2.5: Optional cross-project patterns
+  // v1.2: Added relevance gate (touchOverlap >= 2) and deduplication
+  // ========================================
+
+  if (options.crossProjectWarnings) {
+    // v1.1: Query HIGH/CRITICAL patterns from other projects in same workspace
+    const crossProjectPatterns = patternRepo.findCrossProject({
+      workspaceId,
+      excludeProjectId: projectId,
+      carrierStage: target,
+      minSeverity: 'HIGH'
+    });
+
+    // v1.2: Relevance gate - require touchOverlap >= 2 to reduce noise
+    const relevantCrossPatterns = crossProjectPatterns.filter(p => {
+      const touchOverlap = p.touches.filter(t => taskProfile.touches.includes(t)).length;
+      return touchOverlap >= 2;
+    });
+
+    // v1.2: Deduplication - if same patternKey exists in current project, skip cross-project version
+    const existingPatternKeys = new Set(matchingPatterns.map(p => p.patternKey));
+    const deduplicatedCrossPatterns = relevantCrossPatterns.filter(p =>
+      !existingPatternKeys.has(p.patternKey)
+    );
+
+    // v1.2: Mark as cross-project for penalty in priority calculation
+    const markedCrossPatterns = deduplicatedCrossPatterns.map(p => ({
+      ...p,
+      _crossProjectPenalty: true  // Used in computeInjectionPriority
+    }));
+
+    // Add cross-project patterns to matching pool (they'll be prioritized in steps 3-4)
+    matchingPatterns = [...matchingPatterns, ...markedCrossPatterns];
+  }
 
   // Apply inferred gate
   const gatedPatterns = matchingPatterns.filter(p =>
@@ -819,19 +929,22 @@ export function selectWarningsForInjection(
   }
 
   // ========================================
-  // STEP 6: Add provisional alerts (v1.0)
+  // STEP 6: Add provisional alerts (PROJECT level)
   // ========================================
   // Alerts are ADDITIVE - they do NOT count against maxTotal
   // This ensures critical real-time warnings are always surfaced
   // NOTE: v1.0 ProvisionalAlert only has 'touches' for filtering (no technologies field)
 
-  const activeAlerts = alertRepo.findActive()
-    .filter(alert =>
-      // Match by touches only (v1.0 schema doesn't include technologies)
-      alert.touches.some(t => taskProfile.touches.includes(t)) &&
-      // Match injection target
-      (alert.injectInto === target || alert.injectInto === 'both')
-    );
+  // v1.1: Query alerts at project level
+  const activeAlerts = alertRepo.findActive({
+    workspaceId,
+    projectId
+  }).filter(alert =>
+    // Match by touches only (v1.0 schema doesn't include technologies)
+    alert.touches.some(t => taskProfile.touches.includes(t)) &&
+    // Match injection target
+    (alert.injectInto === target || alert.injectInto === 'both')
+  );
 
   // Sort by creation time for deterministic ordering (more recent first)
   // NOTE: v1.0 ProvisionalAlert doesn't have severity - alerts are all HIGH/CRITICAL by definition
@@ -1174,26 +1287,32 @@ export function formatInjectionSummary(result: InjectionResult): string {
 // File: src/schemas/injection-log.ts
 
 /**
- * v1.0: InjectionLog records what was injected into a prompt.
+ * v1.1: InjectionLog records what was injected into a prompt.
  * Used for tracking, debugging, and adherence analysis.
  *
  * NOTE: This schema matches spec-pattern-attribution-v1.0.md Section 2.8
+ * v1.1: Added workspaceId/projectId for hierarchical scoping
  */
 export interface InjectionLog {
   id: string;                           // UUID
-  issueId: string;                      // CON-123 (Linear issue ID)
+  workspaceId: string;                  // v1.1: Workspace scope
+  projectId: string;                    // v1.1: Project scope
+  issueId: string;                      // Linear issue key (e.g., PROJ-123)
   target: 'context-pack' | 'spec';
   injectedPatterns: string[];           // PatternDefinition IDs
   injectedPrinciples: string[];         // DerivedPrinciple IDs
-  injectedAlerts: string[];             // ProvisionalAlert IDs (v1.0)
+  injectedAlerts: string[];             // ProvisionalAlert IDs
   taskProfile: TaskProfile;             // Profile used for selection
   injectedAt: string;                   // ISO 8601
 }
 
 /**
- * Create an InjectionLog from an injection result (v1.0 schema).
+ * Create an InjectionLog from an injection result.
+ * v1.1: Updated to include workspaceId/projectId
  */
 export function createInjectionLog(
+  workspaceId: string,
+  projectId: string,
   issueId: string,
   target: 'context-pack' | 'spec',
   taskProfile: TaskProfile,
@@ -1201,6 +1320,8 @@ export function createInjectionLog(
 ): InjectionLog {
   return {
     id: crypto.randomUUID(),
+    workspaceId,
+    projectId,
     issueId,
     target,
     injectedPatterns: result.warnings
@@ -1233,7 +1354,11 @@ Phase 3 is complete when:
 9. [ ] v1.0: Conflict precedence enforced (security > privacy > backcompat > correctness)
 10. [ ] v1.0: Deterministic tie-breaking implemented
 11. [ ] v1.0: InjectionLog includes injectedAlerts array
-12. [ ] All tests pass
+12. [ ] v1.1: Hierarchical scoping implemented (workspace→project)
+13. [ ] v1.1: Baseline/derived principles queried at workspace level
+14. [ ] v1.1: Patterns/alerts queried at project level
+15. [ ] v1.1: Optional cross-project patterns support
+16. [ ] All tests pass
 
 ---
 
@@ -1243,12 +1368,12 @@ After Phase 3, the following are available:
 
 - `extractTaskProfileFromIssue()` - Extract from Linear issue
 - `extractTaskProfileFromContextPack()` - Extract from metadata
-- `selectWarningsForInjection()` - Tiered selection (returns `InjectionResult`)
-- `formatInjectionForPrompt()` - v1.0: Markdown output with alerts section
+- `selectWarningsForInjection(db, workspaceId, projectId, target, taskProfile, maxTotal?, options?)` - v1.1: Tiered selection with hierarchical scoping
+- `formatInjectionForPrompt()` - Markdown output with alerts section
 - `formatWarningsForInjection()` - Legacy markdown output (deprecated)
 - `computeInjectionPriority()` - Priority calculation
 - `computePatternStats()` - Pattern statistics
-- `resolveConflicts()` - v1.0: Conflict precedence resolution
-- `createInjectionLog()` - v1.0: Create log with injectedAlerts
+- `resolveConflicts()` - Conflict precedence resolution
+- `createInjectionLog(workspaceId, projectId, issueId, target, taskProfile, result)` - v1.1: Create log with scope
 
 Phase 4 (Integration) will wire these into the workflow hooks.

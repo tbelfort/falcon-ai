@@ -1,7 +1,7 @@
 # Meta-Learning Pattern Attribution System Specification v1.0
 
 **Status:** Final Draft
-**Last Updated:** 2026-01-18
+**Last Updated:** 2026-01-19
 **Authors:** Human + Claude Opus 4.5 + GPT-5 Pro review
 **Previous Version:** v0.9
 
@@ -26,6 +26,28 @@
 | Meta-warnings could be cited as sources | Added non-citable rule to prompts | 9.3 |
 | TaskProfile extraction had no validation | Added deterministic validators | 9.4 |
 | Baseline B11 missing | Added Least Privilege / Credential Scope | 6.1 |
+| Derived principles never injected (no airtime) | Changed budget: 1 baseline + 1 derived guaranteed | 5.1 |
+| Promotion confidence referenced non-existent `attributionConfidence` | Compute from occurrences at promotion time | 6.4 |
+| Promotion criteria used `severity` instead of `severityMax` | Consistently use `severityMax` | 6.4 |
+| Cross-project query used invalid partial Scope | Added `ScopeFilter` type for queries | 1.6 |
+| "Global high-severity patterns" contradicted scoping model | Renamed to "project-wide fallback" | 5.3 |
+| Workspace and Project entities not defined | Added entity definitions | 2.11, 2.12 |
+| Project identity used unstable `repo_path` | Changed to `repo_origin_url` with uniqueness | 2.12 |
+| ProvisionalAlertRepository missing scope fields | Required scope in API and storage | Phase 1 |
+| SalienceIssueRepository missing scope fields | Required scope in API and storage | Phase 1 |
+| No scope integrity enforcement for occurrences | Added invariant: derive scope from pattern | 1.8 |
+| `alignedBaselineId` could cross workspace boundaries | Added validation rule | 2.1 |
+| Cross-project warnings could inject duplicates | Added deduplication by `patternKey` | 5.1 |
+| Cross-project warnings too noisy (single touch match) | Added relevance gate: `touchOverlap >= 2` | 5.1 |
+| Derived principles ordering underspecified | Added ordering: `touchOverlap, confidence, updatedAt, id` | 5.1 |
+| Runtime scope resolution undefined | Added ScopeResolver policy | 1.9 |
+| Workspace/project registration flow missing | Added Phase 0 reference | 1.9 |
+| Promotion race conditions with concurrent runners | Added `promotionKey` with idempotency | 6.4 |
+| Project deletion behavior unspecified | Added soft delete with status='archived' | 2.12 |
+| Promotion has no rollback mechanism | Added archive-with-reason for derived principles | 6.4 |
+| Observability lacked scope context | Added required log fields | 5.5 |
+| Offline/DB-busy mode undefined | Added deterministic fallback policy | 1.10 |
+| Scope invariants not documented | Added Scope Invariants subsection | 1.8 |
 
 ---
 
@@ -43,19 +65,21 @@ A feedback loop for a multi-agent software development system. When PR reviews f
 ### 1.2 System Context
 
 ```
-LINEAR ISSUE (CON-XXX)
+LINEAR ISSUE (issueKey, e.g., PROJ-123)
         │
         ▼
 CONTEXT PACK CREATION (opus agent)
 │   • Reads relevant docs, extracts constraints with citations
 │   • Outputs: taskProfile, constraints, sources consulted
-│   ← INJECTION POINT: Load warnings from past failures
+│   • Writes to: .falcon/context_packs/<issueKey>.md (git = source of truth)
+│   ← INJECTION POINT: Load warnings (scoped) from past failures
         │
         ▼
 SPEC CREATION (opus agent)
 │   • Reads ONLY the Context Pack (nothing else)
 │   • Extracts requirements, test specs, acceptance criteria
-│   ← INJECTION POINT: Load warnings from past failures
+│   • Writes to: .falcon/specs/<issueKey>.md (git = source of truth)
+│   ← INJECTION POINT: Load warnings (scoped) from past failures
         │
         ▼
 IMPLEMENTATION (sonnet agent)
@@ -72,8 +96,14 @@ PR REVIEW
 PATTERN ATTRIBUTION (this system)
 │   • For each confirmed finding: analyze root cause
 │   • Output: Pattern OR ExecutionNoncompliance OR DocUpdateRequest OR ProvisionalAlert
+│   • Patterns stored in: ~/.falcon-ai/db/falcon.db (project-scoped)
         │
         └──────────► FEEDBACK LOOP back to Context Pack/Spec agents
+
+SCOPING:
+├── GLOBAL (~/.falcon-ai/): CLI, database, workspace configs
+├── WORKSPACE (DB-scoped): Baselines (B01-B11), derived principles
+└── PROJECT (.falcon/): Patterns, specs, context packs, ai_docs
 ```
 
 ### 1.3 Design Principles
@@ -115,6 +145,285 @@ This gives us:
 
 Batching (multiple findings per Attribution Agent call) is deferred to v2 after strict JSON schema validation is in place.
 
+### 1.6 Global Installation + Hierarchical Scoping
+
+The system uses a three-tier hierarchical scoping model:
+
+```typescript
+type Scope =
+  | { level: 'global' }
+  | { level: 'workspace'; workspaceId: string }
+  | { level: 'project'; workspaceId: string; projectId: string };
+
+// ScopeFilter - for querying across scopes (not a valid Scope itself)
+type ScopeFilter =
+  | { workspaceId: string; projectId: string }   // Query within specific project
+  | { workspaceId: string };                      // Query across all projects in workspace
+```
+
+**Important:** `ScopeFilter` is used for **queries**, not for entity storage. Entities always store a full `Scope`. Use `ScopeFilter` when querying patterns across projects or when you don't know the projectId yet.
+
+#### Tier Definitions
+
+| Tier | Location | Contents |
+|------|----------|----------|
+| **Global** | `~/.falcon-ai/` | CLI binary, SQLite database (`db/falcon.db`), workspace configurations |
+| **Workspace** | DB-scoped | Baseline principles (B01-B11), derived principles, workspace-wide settings |
+| **Project** | `.falcon/` in repo | Patterns, occurrences, specs, context packs, ai_docs, task files |
+
+#### Directory Structure
+
+```
+~/.falcon-ai/                          # GLOBAL
+├── db/
+│   └── falcon.db                      # Single database for all workspaces/projects
+├── config.yaml                        # Global CLI config
+└── workspaces/
+    └── <workspaceId>/
+        └── config.yaml                # Workspace-specific config
+
+<project-root>/.falcon/                # PROJECT
+├── specs/
+│   └── <issueKey>.md                  # Machine-readable specs
+├── context_packs/
+│   └── <issueKey>.md                  # Machine-readable context packs
+├── ai_docs/
+│   └── <issueKey>/
+│       └── <topic>.md                 # AI-generated documentation
+├── TASKS/WORKFLOW/                    # Task definitions
+├── ROLES/                             # Role definitions
+└── TEMPLATES/                         # Template files
+```
+
+#### Data Isolation Rules
+
+1. **Project data is isolated by default** — Patterns, occurrences, and learned data from one project never affect another project unless explicitly promoted
+2. **All queries must filter by scope** — Every `find()` operation must include `workspaceId` and `projectId` filters
+3. **Baselines are workspace-scoped** — Baseline principles (B01-B11) apply across all projects within a workspace
+4. **Derived principles are workspace-scoped** — When a pattern is promoted, it becomes a workspace-level derived principle
+
+#### Scope Enforcement
+
+```typescript
+// All entity queries MUST include scope filters
+PatternDefinition.find({
+  scope: { level: 'project', workspaceId, projectId },
+  status: 'active',
+  // ... other filters
+})
+
+DerivedPrinciple.find({
+  scope: { level: 'workspace', workspaceId },
+  origin: 'baseline',
+  // ... other filters
+})
+```
+
+### 1.7 Git as Source of Truth
+
+**Primary principle:** Git repositories are the source of truth for specs and context packs. Linear is a mirror with backlinks.
+
+#### File Locations
+
+| Artifact | Location | Format |
+|----------|----------|--------|
+| Specs | `.falcon/specs/<issueKey>.md` | Markdown with YAML frontmatter |
+| Context Packs | `.falcon/context_packs/<issueKey>.md` | Markdown with YAML frontmatter |
+| AI Docs | `.falcon/ai_docs/<issueKey>/<topic>.md` | Markdown |
+
+#### YAML Frontmatter Format
+
+```yaml
+---
+issueKey: PROJ-123
+title: Implement user authentication
+taskProfile:
+  touches: [auth, database, user_input]
+  technologies: [postgres, jwt]
+  taskTypes: [api, security]
+  confidence: 0.85
+sourcesConsulted:
+  - kind: git
+    repo: org/repo
+    path: docs/AUTH.md
+    commitSha: abc123
+createdAt: 2026-01-19T10:00:00Z
+updatedAt: 2026-01-19T14:30:00Z
+---
+
+# PROJ-123: Implement user authentication
+
+[Content follows...]
+```
+
+#### Linear Mirroring
+
+1. **Linear docs contain backlinks** — Each Linear doc includes:
+   - Link to the git file: `Source: [specs/PROJ-123.md](https://github.com/org/repo/blob/abc123/.falcon/specs/PROJ-123.md)`
+   - Commit SHA: `Version: abc123`
+   - Last sync timestamp
+
+2. **Sync direction** — Git → Linear (one-way). Linear docs are read-only mirrors.
+
+3. **DocFingerprint for specs/context packs** — Always use `kind: 'git'`:
+   ```typescript
+   carrierFingerprint: {
+     kind: 'git',
+     repo: 'org/repo',
+     path: '.falcon/specs/PROJ-123.md',
+     commitSha: 'abc123'
+   }
+   ```
+
+#### Benefits
+
+- **Version control** — Full history, diffs, blame, rollback
+- **Code review** — Specs and context packs can be reviewed alongside code
+- **CI integration** — Validation, linting, and checks on spec changes
+- **Offline access** — Developers can read specs without Linear access
+
+### 1.8 Scope Invariants
+
+These invariants MUST be enforced at the repository/application level:
+
+1. **Occurrence scope derived from pattern** — When creating a `PatternOccurrence`, always derive `workspaceId` and `projectId` from the referenced `PatternDefinition`. Do NOT accept scope from callers.
+
+2. **alignedBaselineId workspace boundary** — When setting `alignedBaselineId` on a `PatternDefinition`, the referenced `DerivedPrinciple` MUST have the same `workspaceId`.
+
+3. **Issue keys are project-scoped** — An `issueId` (Linear issue key like `PROJ-123`) is only unique within a project. All queries by `issueId` MUST include `workspaceId` and `projectId`.
+
+4. **Denormalized scope must match** — If an entity stores both a `patternId` and `{workspaceId, projectId}`, the scopes must match. Enforce at insert time.
+
+5. **No cross-scope FKs** — Foreign keys that reference other entities must point to entities in the same or parent scope (project → workspace OK, project → different project NOT OK).
+
+**Enforcement Strategy:**
+
+```typescript
+// In PatternOccurrenceRepository.create():
+function create(data: Omit<PatternOccurrence, 'id' | 'workspaceId' | 'projectId' | 'createdAt'>) {
+  const pattern = patternRepo.findById(data.patternId);
+  if (!pattern) throw new Error(`Pattern ${data.patternId} not found`);
+
+  // Derive scope from pattern (not from caller)
+  const workspaceId = pattern.scope.workspaceId;
+  const projectId = pattern.scope.projectId;
+
+  // ... create occurrence with derived scope
+}
+
+// In PatternDefinitionRepository.update():
+if (data.alignedBaselineId) {
+  const baseline = principleRepo.findById(data.alignedBaselineId);
+  if (!baseline) throw new Error(`Baseline ${data.alignedBaselineId} not found`);
+  if (baseline.scope.workspaceId !== existing.scope.workspaceId) {
+    throw new Error('alignedBaselineId must be in same workspace as pattern');
+  }
+}
+```
+
+### 1.9 Runtime Scope Resolution
+
+At runtime, the system must resolve `{workspaceId, projectId}` for every operation. This is a **hard dependency** — operations fail closed if scope cannot be resolved.
+
+#### ScopeResolver Policy
+
+```
+FUNCTION resolveScope(): { workspaceId: string; projectId: string }
+
+  // STEP 1: Check for explicit config (authoritative)
+  configPath = findAncestor('.falcon/config.yaml')
+  IF configPath exists:
+    config = parseYaml(configPath)
+    IF config.workspaceId AND config.projectId:
+      RETURN { workspaceId: config.workspaceId, projectId: config.projectId }
+
+  // STEP 2: Check environment variables (for CI)
+  IF process.env.FALCON_WORKSPACE_ID AND process.env.FALCON_PROJECT_ID:
+    RETURN {
+      workspaceId: process.env.FALCON_WORKSPACE_ID,
+      projectId: process.env.FALCON_PROJECT_ID
+    }
+
+  // STEP 3: Lookup by stable repo fingerprint
+  repoOriginUrl = git.getRemoteOriginUrl()
+  repoSubdir = git.getRelativePathToRoot()  // For monorepos
+
+  project = Project.findOne({
+    repoOriginUrl: canonicalizeUrl(repoOriginUrl),
+    repoSubdir: repoSubdir || null
+  })
+  IF project:
+    RETURN { workspaceId: project.workspaceId, projectId: project.id }
+
+  // STEP 4: Fail closed with actionable error
+  THROW Error("""
+    Could not resolve Falcon scope. Run one of:
+
+    1. 'falcon init' to register this project
+    2. Set FALCON_WORKSPACE_ID and FALCON_PROJECT_ID environment variables
+    3. Create .falcon/config.yaml with workspaceId and projectId
+  """)
+```
+
+#### Registration (Phase 0)
+
+Before using the system, workspace and project must be registered:
+
+```bash
+# Register workspace (creates if not exists)
+falcon workspace create --name "My Team"
+
+# Register project in workspace (idempotent upsert)
+falcon init --workspace "My Team"
+# Creates .falcon/config.yaml with workspaceId and projectId
+
+# Verify configuration
+falcon doctor
+# Outputs: workspaceId, projectId, DB connectivity, baselines seeded, etc.
+```
+
+### 1.10 Offline and Degraded Mode Policy
+
+The system must behave deterministically when external dependencies are unavailable.
+
+#### Linear Unavailable
+
+```
+IF Linear API is unreachable:
+  - Inject from local `.falcon/*` metadata/frontmatter only
+  - Log event: { type: 'linear_unavailable', action: 'using_local_metadata' }
+  - DO NOT fail the operation
+```
+
+#### Database Busy/Locked
+
+```
+IF SQLite returns SQLITE_BUSY:
+  - Retry with exponential backoff: 50ms, 100ms, 200ms (max 3 attempts)
+  - IF still failing after retries:
+    - Proceed WITHOUT injection
+    - Log event: {
+        type: 'db_busy',
+        action: 'injection_skipped',
+        workspaceId,
+        projectId,
+        issueId
+      }
+  - NEVER auto-create workspace/project in degraded mode
+```
+
+#### Read-Only Environment (CI)
+
+```
+IF database file is read-only or directory is not writable:
+  - READ operations: proceed normally
+  - WRITE operations: skip silently and log
+  - Injection: use cached patterns only
+  - Attribution: queue for later processing (write to temp file)
+```
+
+**Key principle:** Silent degradation is acceptable for injection (safety). Explicit failure is required for attribution (correctness).
+
 ---
 
 ## 2. Entity Definitions
@@ -126,7 +435,8 @@ A reusable pattern representing bad guidance that led to a confirmed finding.
 ```typescript
 interface PatternDefinition {
   id: string;                          // UUID (surrogate key)
-  patternKey: string;                  // Deterministic uniqueness key (UNIQUE INDEX)
+  scope: Scope;                        // MUST be { level: 'project', workspaceId, projectId }
+  patternKey: string;                  // Deterministic uniqueness key (UNIQUE INDEX per scope)
   contentHash: string;                 // SHA-256 of normalized patternContent
 
   // What was wrong
@@ -167,7 +477,7 @@ interface PatternDefinition {
 
 #### Pattern Identity / Deduplication
 
-The `patternKey` is a deterministic uniqueness key:
+The `patternKey` is a deterministic uniqueness key **within a project scope**:
 
 ```typescript
 patternKey = sha256(
@@ -184,7 +494,9 @@ patternKey = sha256(
 
 **Why NOT include `failureMode`:** failureMode can change when evidence improves; identity shouldn't change.
 
-**Enforcement:** UNIQUE INDEX on `patternKey`. If a second occurrence matches an existing patternKey, append to that pattern instead of creating a new one.
+**Enforcement:** UNIQUE INDEX on `(workspaceId, projectId, patternKey)`. Uniqueness is scoped to the project — the same patternKey can exist in different projects without collision. If a second occurrence within the same project matches an existing patternKey, append to that pattern instead of creating a new one.
+
+**Cross-project patterns:** When the same patternKey appears in 3+ distinct projects within a workspace, consider promoting to a workspace-level DerivedPrinciple (see Section 6.4).
 
 #### Severity Update Rule
 
@@ -253,9 +565,13 @@ interface PatternOccurrence {
   id: string;                          // UUID
   patternId: string;                   // FK to PatternDefinition
 
+  // Scope (denormalized for query efficiency)
+  workspaceId: string;
+  projectId: string;
+
   // Source finding
   findingId: string;                   // From PR Review
-  issueId: string;                     // CON-123
+  issueId: string;                     // Linear issue key (e.g., PROJ-123)
   prNumber: number;
   severity: Severity;                  // Severity of THIS occurrence
 
@@ -352,6 +668,7 @@ A general principle — either a baseline guardrail or derived from pattern clus
 ```typescript
 interface DerivedPrinciple {
   id: string;                          // UUID
+  scope: Scope;                        // { level: 'workspace', workspaceId } for baselines/derived
 
   // Content
   principle: string;                   // "Never use string interpolation for SQL"
@@ -392,9 +709,13 @@ When an agent ignored correct guidance. NOT a guidance error — distinct from P
 interface ExecutionNoncompliance {
   id: string;                          // UUID
 
+  // Scope
+  workspaceId: string;
+  projectId: string;
+
   // Source finding
   findingId: string;
-  issueId: string;                     // CON-123
+  issueId: string;                     // Linear issue key (e.g., PROJ-123)
   prNumber: number;
 
   // What was ignored
@@ -429,9 +750,13 @@ Triggered when a finding requires documentation update. Primary output for `deci
 interface DocUpdateRequest {
   id: string;                          // UUID
 
+  // Scope
+  workspaceId: string;
+  projectId: string;
+
   // Source
   findingId: string;
-  issueId: string;
+  issueId: string;                     // Linear issue key (e.g., PROJ-123)
   findingCategory: FindingCategory;    // Now includes 'decisions'
   scoutType: string;                   // Which scout found this
   decisionClass?: DecisionClass;       // Required if findingCategory == 'decisions'
@@ -490,6 +815,10 @@ Tracks when a pattern should have been injected but wasn't due to taskProfile mi
 interface TaggingMiss {
   id: string;                          // UUID
 
+  // Scope
+  workspaceId: string;
+  projectId: string;
+
   // What happened
   findingId: string;
   patternId: string;                   // Pattern that would have helped
@@ -521,8 +850,12 @@ Records what patterns/principles were injected for each issue. Used for adherenc
 interface InjectionLog {
   id: string;                          // UUID
 
+  // Scope
+  workspaceId: string;
+  projectId: string;
+
   // What was injected
-  issueId: string;                     // CON-123
+  issueId: string;                     // Linear issue key (e.g., PROJ-123)
   target: 'context-pack' | 'spec';
 
   // Injected items
@@ -546,9 +879,13 @@ Short-lived alerts for CRITICAL findings that don't yet meet the learned pattern
 interface ProvisionalAlert {
   id: string;                          // UUID
 
+  // Scope
+  workspaceId: string;
+  projectId: string;
+
   // Source
   findingId: string;
-  issueId: string;
+  issueId: string;                     // Linear issue key (e.g., PROJ-123)
 
   // Content
   message: string;                     // Short actionable warning
@@ -582,6 +919,10 @@ Tracks guidance that is repeatedly ignored, suggesting a formatting/prominence p
 interface SalienceIssue {
   id: string;                          // UUID
 
+  // Scope
+  workspaceId: string;
+  projectId: string;
+
   // What's being ignored
   guidanceLocationHash: string;        // SHA-256 of (stage + location + excerpt)
   guidanceStage: 'context-pack' | 'spec';
@@ -608,6 +949,131 @@ interface SalienceIssue {
 - Created when same `guidanceLocationHash` appears in 3+ ExecutionNoncompliance records within 30 days
 - Does NOT automatically escalate prominence (v1)
 - Surfaces for manual review of format/placement issues
+
+### 2.11 Workspace
+
+A workspace groups related projects (e.g., a team, organization, or product area).
+
+```typescript
+interface Workspace {
+  id: string;                          // UUID (surrogate key)
+  name: string;                        // Human-readable name (e.g., "Platform Team")
+  slug: string;                        // URL-safe identifier (e.g., "platform-team")
+
+  // Configuration
+  config: WorkspaceConfig;             // JSON blob for workspace-wide settings
+
+  // Lifecycle
+  status: 'active' | 'archived';
+
+  // Timestamps
+  createdAt: string;                   // ISO 8601
+  updatedAt: string;                   // ISO 8601
+}
+
+interface WorkspaceConfig {
+  // Injection settings
+  maxInjectedWarnings?: number;        // Default: 6
+  crossProjectWarningsEnabled?: boolean; // Default: false
+
+  // Promotion settings
+  autoPromotionEnabled?: boolean;      // Default: false (manual review)
+
+  // Any additional settings
+  [key: string]: unknown;
+}
+```
+
+**Uniqueness:** `UNIQUE INDEX on (slug)`
+
+**Lifecycle:**
+- Workspaces are NOT deleted, only archived
+- Archived workspaces: excluded from project creation, all projects become inactive
+- Baselines are workspace-scoped and persist across archival
+
+### 2.12 Project
+
+A project corresponds to a code repository (or subdirectory in a monorepo).
+
+```typescript
+interface Project {
+  id: string;                          // UUID (surrogate key)
+  workspaceId: string;                 // FK to Workspace
+
+  // Identity (stable across machines)
+  name: string;                        // Human-readable name (e.g., "falcon-api")
+  repoOriginUrl: string;               // Canonical git remote URL (e.g., "git@github.com:org/repo.git")
+  repoSubdir?: string;                 // For monorepos (e.g., "packages/api")
+
+  // Machine-local hint (NOT for identity)
+  repoPath?: string;                   // Local filesystem path (informational only)
+
+  // Configuration
+  config: ProjectConfig;               // JSON blob for project-specific settings
+
+  // Lifecycle
+  status: 'active' | 'archived';
+
+  // Timestamps
+  createdAt: string;                   // ISO 8601
+  updatedAt: string;                   // ISO 8601
+}
+
+interface ProjectConfig {
+  // Linear integration
+  linearProjectId?: string;            // Linear project ID for backlinks
+  linearTeamId?: string;               // Linear team ID
+
+  // Project-specific settings
+  defaultTouches?: Touch[];            // Default touches for issues in this project
+
+  // Any additional settings
+  [key: string]: unknown;
+}
+```
+
+**Uniqueness:** `UNIQUE INDEX on (workspace_id, repo_origin_url, repo_subdir)`
+
+This ensures:
+- Same repo URL can exist in different workspaces
+- Same repo URL + different subdirs = different projects (monorepo)
+- Registration is idempotent (upsert by identity)
+
+**Stable Identity:**
+
+```typescript
+// Canonicalize URL for consistent matching
+function canonicalizeRepoUrl(url: string): string {
+  // Convert HTTPS to SSH format for consistency
+  // git@github.com:org/repo.git → git@github.com:org/repo.git
+  // https://github.com/org/repo → git@github.com:org/repo.git
+  // Remove trailing .git if missing
+  // Lowercase hostname
+}
+```
+
+**Lifecycle:**
+- Projects are NOT deleted, only archived
+- Archived projects:
+  - Excluded from injection queries
+  - Excluded from cross-project warnings
+  - Excluded from promotion counts
+  - Patterns remain in DB for historical reference
+- Reactivation: Set `status = 'active'` to restore
+
+**Project Deletion Behavior:**
+
+When a project is archived:
+
+```
+1. Set project.status = 'archived'
+2. All associated patterns remain (status unchanged)
+3. Injection queries filter: WHERE project.status = 'active'
+4. Cross-project queries filter: WHERE project.status = 'active'
+5. Promotion counts filter: WHERE project.status = 'active'
+```
+
+This prevents "ghost influence" from deleted projects while preserving history.
 
 ---
 
@@ -883,31 +1349,70 @@ Patterns with `primaryCarrierQuoteType == 'inferred'` have lower base confidence
 
 ### 5.1 Tiered Injection Algorithm
 
+**Budget model:** Guarantee airtime for both baselines AND derived principles:
+- **Slot 1:** Best matching baseline principle
+- **Slot 2:** Best matching derived principle (if any exist)
+- **Slots 3-6:** Learned patterns (security gets priority)
+
+This ensures promoted patterns (derived principles) actually get injected, making promotion meaningful.
+
 ```
 FUNCTION selectWarningsForInjection(
+  workspaceId: string,
+  projectId: string,
   target: 'context-pack' | 'spec',
   taskProfile: TaskProfile,
-  maxTotal: number = 6
+  maxTotal: number = 6,
+  options: { crossProjectWarnings?: boolean } = {}
 ): InjectedWarning[]
 
-  // STEP 1: Select baseline principles
-  eligiblePrinciples = DerivedPrinciple.find({
+  // Verify project is active (archived projects don't get injection)
+  project = Project.findById(projectId)
+  IF project.status != 'active':
+    RETURN []
+
+  // STEP 1: Select baseline principles (WORKSPACE level)
+  // Use ScopeFilter for queries (not partial Scope)
+  eligibleBaselines = DerivedPrinciple.find({
+    workspaceId,                                      // ScopeFilter field
     origin: 'baseline',
     status: 'active',
     injectInto: target OR 'both',
     touches: { $overlap: taskProfile.touches }
   })
 
-  // CHANGED: Deterministic tie-breaking
-  selectedPrinciples = eligiblePrinciples
+  // Deterministic tie-breaking: touchOverlap DESC, id ASC
+  selectedBaseline = eligibleBaselines
     .sortBy(p => [
-      -countOverlap(p.touches, taskProfile.touches),  // touchOverlapCount DESC
-      p.id                                            // id ASC
+      -countOverlap(p.touches, taskProfile.touches),
+      p.id
     ])
-    .take(2)
+    .take(1)  // CHANGED: Take exactly 1 baseline
 
-  // STEP 2: Select learned patterns
+  // STEP 2: Select derived principles (WORKSPACE level)
+  // CHANGED: Derived principles get their own guaranteed slot
+  derivedPrinciples = DerivedPrinciple.find({
+    workspaceId,                                      // ScopeFilter field
+    origin: 'derived',
+    status: 'active',
+    injectInto: target OR 'both',
+    touches: { $overlap: taskProfile.touches }
+  })
+
+  // Deterministic ordering: touchOverlap DESC, confidence DESC, updatedAt DESC, id ASC
+  selectedDerived = derivedPrinciples
+    .sortBy(p => [
+      -countOverlap(p.touches, taskProfile.touches),  // touchOverlap DESC
+      -p.confidence,                                   // confidence DESC
+      -Date.parse(p.updatedAt),                       // updatedAt DESC (more recent first)
+      p.id                                             // id ASC (stable)
+    ])
+    .take(1)  // CHANGED: Take exactly 1 derived (guaranteed slot)
+
+  // STEP 3: Select learned patterns (PROJECT level)
   eligiblePatterns = PatternDefinition.find({
+    workspaceId,                                      // ScopeFilter fields
+    projectId,
     status: 'active',
     carrierStage: target,
     $or: [
@@ -917,6 +1422,40 @@ FUNCTION selectWarningsForInjection(
     ]
   })
 
+  // STEP 4 (OPTIONAL): Cross-project patterns
+  IF options.crossProjectWarnings:
+    // Query uses ScopeFilter, NOT partial Scope object
+    crossProjectPatterns = PatternDefinition.find({
+      workspaceId,                                    // ScopeFilter: workspace-level
+      projectId: { $ne: projectId },                  // Exclude current project
+      'project.status': 'active',                     // Only from active projects
+      status: 'active',
+      carrierStage: target,
+      severityMax: { $in: ['HIGH', 'CRITICAL'] },     // Only high severity
+      findingCategory: 'security',                    // v1: security only
+      touches: { $overlap: taskProfile.touches }
+    })
+
+    // RELEVANCE GATE: Require meaningful overlap to reduce noise
+    crossProjectPatterns = crossProjectPatterns.filter(p =>
+      countOverlap(p.touches, taskProfile.touches) >= 2
+      OR (countOverlap(p.touches, taskProfile.touches) >= 1
+          AND countOverlap(p.technologies, taskProfile.technologies) >= 1)
+    )
+
+    // DEDUPLICATION: Same patternKey in both local and cross-project
+    // Prefer local project pattern; else prefer higher severityMax; else prefer more recent
+    seenPatternKeys = new Set(eligiblePatterns.map(p => p.patternKey))
+    crossProjectPatterns = crossProjectPatterns.filter(p =>
+      !seenPatternKeys.has(p.patternKey)
+    )
+
+    // Downweight cross-project patterns slightly (local patterns win ties)
+    FOR each p IN crossProjectPatterns:
+      p.crossProjectPenalty = 0.05  // Applied in priority calculation
+
+    eligiblePatterns = eligiblePatterns.concat(crossProjectPatterns)
+
   // Apply inferred gate (see Section 4.4)
   eligiblePatterns = eligiblePatterns.filter(p =>
     p.primaryCarrierQuoteType != 'inferred'
@@ -925,41 +1464,67 @@ FUNCTION selectWarningsForInjection(
 
   // Compute injection priority for each
   FOR each pattern IN eligiblePatterns:
-    pattern.injectionPriority = computeInjectionPriority(pattern, taskProfile)
+    priority = computeInjectionPriority(pattern, taskProfile)
+    IF pattern.crossProjectPenalty:
+      priority = priority * (1 - pattern.crossProjectPenalty)
+    pattern.injectionPriority = priority
 
-  // STEP 3: Select with security priority
+  // STEP 5: Select with security priority
+  // CHANGED: Account for 2 reserved principle slots (1 baseline + 1 derived)
+  principleCount = selectedBaseline.length + selectedDerived.length
+  patternBudget = maxTotal - principleCount  // Typically 4-5 slots
+
   securityPatterns = eligiblePatterns
     .filter(p => p.findingCategory == 'security')
     .sortBy(p => [
       -p.injectionPriority,                           // priority DESC
-      SEVERITY_ORDER[p.severityMax],                  // severity DESC
-      p.id                                            // id ASC
+      -SEVERITY_ORDER[p.severityMax],                 // severity DESC
+      daysSinceLastSeen(p),                           // more recent first
+      p.id                                            // id ASC (stable)
     ])
-    .take(3)
+    .take(min(3, patternBudget))  // Up to 3 security patterns
 
-  remainingSlots = maxTotal - selectedPrinciples.length - securityPatterns.length
+  remainingSlots = patternBudget - securityPatterns.length
+  selectedPatternIds = new Set(securityPatterns.map(p => p.id))
 
   otherPatterns = eligiblePatterns
-    .filter(p => p.findingCategory != 'security')
+    .filter(p => p.findingCategory != 'security' && !selectedPatternIds.has(p.id))
     .sortBy(p => [
       -p.injectionPriority,
-      SEVERITY_ORDER[p.severityMax],
+      -SEVERITY_ORDER[p.severityMax],
+      daysSinceLastSeen(p),
       p.id
     ])
     .take(remainingSlots)
 
-  // STEP 4: Select active ProvisionalAlerts
+  // STEP 6: Select active ProvisionalAlerts (PROJECT level)
   activeAlerts = ProvisionalAlert.find({
+    workspaceId,
+    projectId,
     status: 'active',
     injectInto: target OR 'both',
     touches: { $overlap: taskProfile.touches },
     expiresAt: { $gt: now() }
   })
-  // ProvisionalAlerts are additive (don't count against maxTotal)
+  // ProvisionalAlerts are ADDITIVE (don't count against maxTotal)
+  // This ensures critical real-time warnings always surface
 
-  // STEP 5: Combine and format
-  RETURN formatWarnings(selectedPrinciples + securityPatterns + otherPatterns + activeAlerts)
+  // STEP 7: Combine and format
+  RETURN formatWarnings(
+    selectedBaseline +
+    selectedDerived +
+    securityPatterns +
+    otherPatterns +
+    activeAlerts
+  )
 ```
+
+**Typical budget allocation (maxTotal=6):**
+- 1 baseline principle (guaranteed)
+- 1 derived principle (guaranteed, if any exist)
+- Up to 3 security patterns
+- Remaining slots for other patterns
+- ProvisionalAlerts (additive, unlimited)
 
 ### 5.2 Injection Format
 
@@ -971,13 +1536,13 @@ FUNCTION selectWarningsForInjection(
 
 ### [SECURITY][incorrect][HIGH] SQL query construction
 **Bad guidance:** "Use template literals for SQL for readability."
-**Observed result:** SQL injection vulnerability (CON-123, PR #456).
+**Observed result:** SQL injection vulnerability (PROJ-123, PR #456).
 **Do instead:** Always use parameterized queries. Never interpolate user input.
 **Applies when:** touches=database,user_input; tech=sql,postgres
 
 ### [CORRECTNESS][incomplete][MEDIUM] Retry logic
 **Bad guidance:** "Retry failed requests."
-**Observed result:** Infinite retry loop causing resource exhaustion (CON-456, PR #789).
+**Observed result:** Infinite retry loop causing resource exhaustion (PROJ-456, PR #789).
 **Do instead:** Implement exponential backoff with max 3 retries.
 **Applies when:** touches=network
 
@@ -995,8 +1560,10 @@ FUNCTION selectWarningsForInjection(
 ### 5.3 Low-Confidence TaskProfile Fallback
 
 If `taskProfile.confidence < 0.5`:
-- Include 1 additional baseline principle (top 3 instead of top 2)
-- Include top 2 global high-severity patterns regardless of tag matching
+- Include 1 additional baseline principle (take(2) instead of take(1) in Step 1)
+- Include top 2 **project-wide** HIGH/CRITICAL patterns regardless of tag matching
+
+**Clarification:** "Project-wide" means patterns from the **current project** only (not cross-project). These are patterns that might be relevant even without tag matching because the taskProfile extraction was unreliable.
 
 ### 5.4 Conflict Precedence Order
 
@@ -1017,13 +1584,89 @@ When selecting patterns for injection:
 ### 5.5 Tracking Injection and Adherence
 
 When a Pattern/Principle/Alert is injected:
-1. Record in InjectionLog: `{ patternId, principleId, alertId, issueId, injectedAt, target }`
+1. Record in InjectionLog: `{ workspaceId, projectId, patternId, principleId, alertId, issueId, injectedAt, target }`
 
 After PR Review, for each finding that maps to a pattern:
 1. Check InjectionLog: Was this pattern injected for this issue?
 2. Set `occurrence.wasInjected = true/false`
 3. If injected, analyze implementation: Did it follow the warning?
 4. Set `occurrence.wasAdheredTo = true/false/null`
+
+### 5.6 Observability Requirements
+
+All injection and attribution operations MUST emit structured logs with scope context. This is required for debugging "why didn't my warning show up?" issues.
+
+**Required log fields for injection:**
+
+```typescript
+interface InjectionLogEvent {
+  type: 'injection_completed' | 'injection_skipped';
+  timestamp: string;
+
+  // Scope context (REQUIRED)
+  workspaceId: string;
+  projectId: string;
+  issueId: string;
+  target: 'context-pack' | 'spec';
+
+  // What was injected
+  baselinesSelected: number;
+  derivedSelected: number;
+  patternsSelected: number;
+  alertsSelected: number;
+  selectedPatternKeys: string[];  // For debugging duplicates
+
+  // Why things were/weren't selected
+  crossProjectEnabled: boolean;
+  crossProjectPatternsConsidered: number;
+  crossProjectPatternsFiltered: number;  // Failed relevance gate
+  crossProjectDuplicatesRemoved: number;
+
+  // If skipped, why?
+  skipReason?: 'db_busy' | 'project_archived' | 'no_matching_warnings';
+}
+```
+
+**Required log fields for attribution:**
+
+```typescript
+interface AttributionLogEvent {
+  type: 'attribution_completed' | 'attribution_failed';
+  timestamp: string;
+
+  // Scope context (REQUIRED)
+  workspaceId: string;
+  projectId: string;
+  issueId: string;
+  findingId: string;
+
+  // Outcome
+  outcome: 'pattern_created' | 'pattern_updated' | 'noncompliance' | 'doc_update' | 'provisional_alert';
+  patternKey?: string;
+  patternId?: string;
+
+  // If failed, why?
+  failureReason?: string;
+}
+```
+
+**Required log fields for promotion:**
+
+```typescript
+interface PromotionLogEvent {
+  type: 'promotion_attempted' | 'promotion_completed' | 'promotion_duplicate';
+  timestamp: string;
+
+  // Scope context (REQUIRED)
+  workspaceId: string;
+  patternKey: string;
+  projectCount: number;
+
+  // Outcome
+  derivedPrincipleId?: string;
+  promotionKey?: string;  // For debugging duplicates
+}
+```
 
 ---
 
@@ -1060,6 +1703,172 @@ All baseline principles have:
 - Baselines can be superseded (wording improved) but not archived
 - Baselines are always considered for injection if `touches` overlap
 - New baselines require explicit addition to this spec
+
+### 6.4 Workspace Derived Principles (Promotion)
+
+When a pattern recurs across multiple projects in a workspace, it may be promoted to a workspace-level derived principle.
+
+#### Promotion Criteria
+
+A pattern is eligible for promotion when:
+
+```typescript
+shouldPromote =
+  countDistinctProjects(patternKey, workspaceId) >= 3
+  AND severityMax IN ('HIGH', 'CRITICAL')  // FIXED: use severityMax consistently
+  AND findingCategory == 'security'  // v1: security only
+```
+
+**Note:** Use `severityMax` (worst observed impact) not `severity` (first occurrence) for consistency with injection logic.
+
+**Promotion path:** `ProvisionalAlert → Pattern → DerivedPrinciple`
+
+#### Promotion Key (Idempotency)
+
+To prevent race conditions when multiple runners hit the promotion threshold simultaneously:
+
+```typescript
+promotionKey = sha256(
+  workspaceId + "|" +
+  patternKey + "|" +
+  carrierStage + "|" +
+  findingCategory
+)
+```
+
+**Enforcement:** `UNIQUE INDEX on (workspace_id, promotion_key)` on `derived_principles` table.
+
+Promotion uses `INSERT OR IGNORE` (SQLite) or `ON CONFLICT DO NOTHING` (Postgres) to make concurrent promotion idempotent.
+
+#### Promotion Process
+
+```
+FUNCTION checkForPromotion(pattern: PatternDefinition):
+
+  // Count distinct ACTIVE projects with this patternKey in workspace
+  // Archived projects are excluded to prevent "ghost influence"
+  projectCount = PatternDefinition.count({
+    workspaceId: pattern.scope.workspaceId,
+    patternKey: pattern.patternKey,
+    status: 'active',
+    'project.status': 'active'  // Only active projects
+  }).distinctBy('projectId')
+
+  IF projectCount >= 3
+     AND pattern.severityMax IN ('HIGH', 'CRITICAL')
+     AND pattern.findingCategory == 'security':
+
+    // Compute promotionKey for idempotency
+    promotionKey = sha256(
+      pattern.scope.workspaceId + "|" +
+      pattern.patternKey + "|" +
+      pattern.carrierStage + "|" +
+      pattern.findingCategory
+    )
+
+    // Collect all matching pattern IDs for derivedFrom
+    matchingPatterns = PatternDefinition.find({
+      workspaceId: pattern.scope.workspaceId,
+      patternKey: pattern.patternKey,
+      status: 'active'
+    })
+    patternIds = matchingPatterns.map(p => p.id)
+
+    // Wrap in transaction for atomicity
+    BEGIN IMMEDIATE TRANSACTION
+
+    // Idempotent insert - no error if already exists
+    INSERT OR IGNORE INTO derived_principles {
+      scope: { level: 'workspace', workspaceId: pattern.scope.workspaceId },
+      promotionKey: promotionKey,  // NEW: for idempotency
+      principle: generatePrincipleFromPattern(pattern),
+      rationale: pattern.alternative,
+      origin: 'derived',
+      derivedFrom: patternIds,     // All matching patterns
+      touches: pattern.touches,
+      technologies: pattern.technologies,
+      injectInto: pattern.carrierStage,
+      confidence: computeDerivedConfidence(matchingPatterns, projectCount),
+      permanent: false,
+      status: 'active'
+    }
+
+    COMMIT
+
+    // Log promotion attempt
+    LOG { type: 'promotion_attempted', workspaceId, patternKey, projectCount, promotionKey }
+
+    // If insert succeeded (rowsAffected > 0), log completion
+    IF rowsAffected > 0:
+      LOG { type: 'promotion_completed', workspaceId, derivedPrincipleId, promotionKey }
+    ELSE:
+      LOG { type: 'promotion_duplicate', workspaceId, promotionKey }
+
+
+FUNCTION computeDerivedConfidence(
+  patterns: PatternDefinition[],
+  projectCount: number
+): number
+  // FIXED: Compute from occurrences, not non-existent attributionConfidence field
+  // Get the best base confidence from all matching patterns
+  baseConfidences = patterns.map(p => {
+    stats = computePatternStats(p.id)
+    RETURN computeAttributionConfidence(p, stats)
+  })
+  baseConfidence = max(baseConfidences)  // Use best pattern's confidence
+
+  // Boost from cross-project recurrence
+  projectBoost = min((projectCount - 2) * 0.05, 0.15)  // Max +0.15 at 5+ projects
+
+  RETURN min(baseConfidence + projectBoost, 0.85)      // Cap below baseline (0.9)
+```
+
+#### Post-Promotion Behavior
+
+1. **Project patterns are NOT auto-archived** — They remain active for project-specific tracking
+2. **Derived principle is injected at workspace level** — All projects in workspace receive the warning
+3. **New occurrences still create project patterns** — Attribution continues at project level
+4. **Promotion is one-way** — Derived principles don't demote if projects are removed
+
+#### Rollback Mechanism
+
+Unlike baselines, derived principles CAN be archived if they turn out to be incorrect:
+
+```typescript
+interface DerivedPrinciple {
+  // ... existing fields ...
+
+  // Rollback support (v1.1)
+  promotionKey?: string;           // For idempotency (derived only)
+  archivedReason?: string;         // Why was this archived?
+  archivedAt?: string;             // When was it archived?
+  archivedBy?: string;             // Who/what archived it (user, auto-review, etc.)
+}
+```
+
+**CLI operation:**
+
+```bash
+# Archive a bad derived principle
+falcon principle archive <principleId> --reason "False positive - pattern was coincidental"
+
+# List archived principles
+falcon principle list --status archived
+
+# View archive history
+falcon principle history <principleId>
+```
+
+**Rules:**
+- Archived derived principles are NOT injected
+- Archival is logged for audit
+- Re-promotion of same patternKey is blocked if archived within 90 days (prevents thrashing)
+
+#### v1 Limitations
+
+- Promotion only for `security` category (other categories deferred to v2)
+- Manual review recommended before promotion takes effect
+- Rollback is manual (no automatic bad-pattern detection)
 
 ---
 

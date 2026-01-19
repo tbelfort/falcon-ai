@@ -615,7 +615,10 @@ export interface NoncomplianceCheckResult {
  * If found: This is ExecutionNoncompliance (agent ignored correct guidance)
  * If not found: Proceed with Pattern creation
  */
+// v1.2: Added workspaceId/projectId for scoped noncompliance creation
 export function checkForNoncompliance(params: {
+  workspaceId: string;
+  projectId: string;
   evidence: EvidenceBundle;
   resolvedFailureMode: string;
   contextPack: string;
@@ -650,9 +653,12 @@ export function checkForNoncompliance(params: {
     // Guidance exists! This is execution noncompliance.
     const causes = analyzePossibleCauses(match, params.evidence);
 
+    // v1.2: Include scope fields in noncompliance
     return {
       isNoncompliance: true,
       noncompliance: {
+        workspaceId: params.workspaceId,
+        projectId: params.projectId,
         findingId: params.finding.id,
         issueId: params.finding.issueId,
         prNumber: params.finding.prNumber,
@@ -779,6 +785,7 @@ import type {
   EvidenceBundle,
   DocFingerprint,
   FindingCategory,
+  DecisionClass,             // v1.0: Added for decisions inference
   CarrierInstructionKind,
   ProvisionalAlert,
   SalienceIssue
@@ -795,7 +802,10 @@ import { SalienceIssueRepository } from '../storage/repositories/salience-issue.
 import { ProvisionalAlertRepository } from '../storage/repositories/provisional-alert.repo';
 import { createHash } from 'crypto';
 
+// v1.2: Added workspaceId/projectId for scoped entity creation
 export interface AttributionInput {
+  workspaceId: string;  // v1.2: Required for scoped patterns/occurrences
+  projectId: string;    // v1.2: Required for scoped patterns/occurrences
   finding: {
     id: string;
     issueId: string;
@@ -861,7 +871,10 @@ export class AttributionOrchestrator {
     const resolverResult = resolveFailureMode(evidence);
 
     // Step 3: Check for ExecutionNoncompliance
+    // v1.2: Pass scope fields for scoped entity creation
     const noncomplianceCheck = checkForNoncompliance({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
       evidence,
       resolvedFailureMode: resolverResult.failureMode,
       contextPack: input.contextPack.content,
@@ -883,8 +896,12 @@ export class AttributionOrchestrator {
           .update(`${noncompliance.violatedGuidanceStage}|${noncompliance.violatedGuidanceLocation}|${noncompliance.violatedGuidanceExcerpt}`)
           .digest('hex');
 
-        // Find existing SalienceIssue or create new one
-        const existing = this.salienceIssueRepo.findByLocationHash(guidanceLocationHash);
+        // v1.2: Find existing SalienceIssue within same project scope
+        const existing = this.salienceIssueRepo.findByLocationHash({
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          hash: guidanceLocationHash
+        });
         if (existing && existing.status === 'pending') {
           // Append to existing issue
           this.salienceIssueRepo.update(existing.id, {
@@ -892,8 +909,10 @@ export class AttributionOrchestrator {
             noncomplianceIds: [...existing.noncomplianceIds, noncompliance.id]
           });
         } else {
-          // Create new SalienceIssue (occurrenceCount starts at 1, triggers at 3)
+          // v1.2: Create new SalienceIssue with scope
           this.salienceIssueRepo.create({
+            workspaceId: input.workspaceId,
+            projectId: input.projectId,
             guidanceLocationHash,
             guidanceStage: noncompliance.violatedGuidanceStage,
             guidanceLocation: noncompliance.violatedGuidanceLocation,
@@ -961,11 +980,15 @@ export class AttributionOrchestrator {
     resolverResult: ReturnType<typeof resolveFailureMode>
   ): Promise<AttributionResult> {
     // Decisions findings ALWAYS create DocUpdateRequest
+    // v1.0: Set findingCategory to 'decisions' and infer decisionClass deterministically
+    const decisionClass = this.inferDecisionClass(input, evidence);
+
     const docUpdateRequest = this.docUpdateRepo.create({
       findingId: input.finding.id,
       issueId: input.finding.issueId,
-      findingCategory: 'compliance',
+      findingCategory: 'decisions',  // v1.0: Changed from 'compliance' to 'decisions'
       scoutType: 'decisions',
+      decisionClass,                 // v1.0: Required for decisions findings
       targetDoc: this.inferTargetDoc(evidence),
       updateType: 'add_decision',
       description: input.finding.description,
@@ -1019,8 +1042,12 @@ export class AttributionOrchestrator {
       .update(`${evidence.carrierStage}|${normalizedContent}|${findingCategory}`)
       .digest('hex');
 
-    // Check for existing pattern (deduplication by patternKey)
-    let pattern = this.patternRepo.findByPatternKey(patternKey);
+    // v1.2: Check for existing pattern WITHIN THE SAME PROJECT (scoped deduplication)
+    let pattern = this.patternRepo.findByPatternKey({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      patternKey
+    });
 
     if (pattern) {
       // Update severityMax if this occurrence has higher severity (v1.0)
@@ -1045,10 +1072,18 @@ export class AttributionOrchestrator {
       // Create new pattern
       const touches = this.extractTouches(input, evidence);
 
-      // Check for baseline alignment
-      const alignedBaseline = this.findAlignedBaseline(touches, findingCategory);
+      // Check for baseline alignment (v1.2: within same workspace)
+      const alignedBaseline = this.findAlignedBaseline(
+        input.workspaceId,
+        touches,
+        findingCategory
+      );
 
+      // v1.2: Include scope fields in pattern creation
       pattern = this.patternRepo.create({
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        patternKey,  // v1.2: Store patternKey explicitly
         patternContent,
         failureMode: resolverResult.failureMode,
         findingCategory,
@@ -1079,7 +1114,10 @@ export class AttributionOrchestrator {
           .digest('hex')
       : undefined;
 
+    // v1.2: Include scope fields in occurrence creation
     const occurrence = this.occurrenceRepo.create({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
       patternId: pattern.id,
       findingId: input.finding.id,
       issueId: input.finding.issueId,
@@ -1194,12 +1232,17 @@ export class AttributionOrchestrator {
     return types;
   }
 
+  // v1.2: Added workspaceId for scoped baseline lookup
   private findAlignedBaseline(
+    workspaceId: string,
     touches: PatternDefinition['touches'],
     category: FindingCategory
   ) {
-    // Find baseline that matches touches and category
-    const baselines = this.principleRepo.findActive({ origin: 'baseline' });
+    // Find baseline that matches touches and category within the workspace
+    const baselines = this.principleRepo.findActive({
+      workspaceId,
+      origin: 'baseline'
+    });
 
     for (const baseline of baselines) {
       const touchOverlap = baseline.touches.some(t =>
@@ -1239,6 +1282,60 @@ export class AttributionOrchestrator {
     if (evidence.missingDocId) return evidence.missingDocId;
     if (evidence.carrierStage === 'context-pack') return 'ARCHITECTURE.md';
     return 'DECISIONS.md';
+  }
+
+  /**
+   * Deterministically infer DecisionClass from finding content.
+   * v1.0: Required for decisions findings to enable recurrence counting.
+   *
+   * Uses weighted keyword rules with deterministic tie-break order.
+   * If no match, returns 'error_contract' as fallback (most common).
+   */
+  private inferDecisionClass(
+    input: AttributionInput,
+    evidence: EvidenceBundle
+  ): DecisionClass {
+    const text = `${input.finding.title} ${input.finding.description} ${evidence.carrierQuote}`.toLowerCase();
+
+    // Weighted patterns: [regex, class, weight]
+    // Higher weight = more specific match
+    const patterns: [RegExp, DecisionClass, number][] = [
+      // High-risk classes (per v1.0 spec) - prioritized
+      [/\b(authz|authorization|permission|role|rbac|acl|access.?control)\b/i, 'authz_model', 10],
+      [/\b(backcompat|backward.?compat|deprecat|version|breaking.?change|migration)\b/i, 'backcompat', 10],
+      [/\b(pii|gdpr|privacy|mask|redact|sensitive.?data|log.?retention)\b/i, 'logging_privacy', 10],
+
+      // Standard classes
+      [/\b(cache|caching|ttl|invalidat|stale|expire)\b/i, 'caching', 5],
+      [/\b(retry|retries|backoff|exponential|jitter)\b/i, 'retries', 5],
+      [/\b(timeout|circuit.?breaker|deadline|cancel)\b/i, 'timeouts', 5],
+      [/\b(error.?code|error.?shape|status.?code|error.?response|exception)\b/i, 'error_contract', 3]
+    ];
+
+    // Score each class
+    const scores: Record<string, number> = {};
+    for (const [pattern, decisionClass, weight] of patterns) {
+      if (pattern.test(text)) {
+        scores[decisionClass] = (scores[decisionClass] || 0) + weight;
+      }
+    }
+
+    // Find winner with deterministic tie-break (alphabetical)
+    const entries = Object.entries(scores);
+    if (entries.length === 0) {
+      // No match - use 'error_contract' as default (most common undocumented decision)
+      console.log('[inferDecisionClass] No pattern matched, defaulting to error_contract');
+      return 'error_contract';
+    }
+
+    entries.sort((a, b) => {
+      // Primary: score DESC
+      if (b[1] !== a[1]) return b[1] - a[1];
+      // Tie-break: alphabetical ASC (deterministic)
+      return a[0].localeCompare(b[0]);
+    });
+
+    return entries[0][0] as DecisionClass;
   }
 
   private async shouldCreatePatternForDecision(
@@ -1353,7 +1450,10 @@ export class AttributionOrchestrator {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // 14 days TTL
 
+    // v1.2: Include scope fields in provisional alert creation
     return this.provisionalAlertRepo.create({
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
       findingId: input.finding.id,
       issueId: input.finding.issueId,
       message: this.generateAlertMessage(input, evidence, resolverResult),
