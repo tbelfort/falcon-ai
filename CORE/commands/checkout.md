@@ -7,4 +7,4 @@ argument-hint: <CON-XXX> [--fix | --review]
 
 **Issue:** $ARGUMENTS
 
-Read and follow the instructions in `CORE/TASKS/WORKFLOW/CHECKOUT.md`.
+Read and follow the instructions in `.falcon/CORE/TASKS/WORKFLOW/CHECKOUT.md`.

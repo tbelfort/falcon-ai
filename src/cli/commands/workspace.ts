@@ -133,3 +133,44 @@ workspaceCommand
     console.log(`Archived workspace: ${workspace.name} (${slug})`);
     console.log('All projects in this workspace have been archived.');
   });
+
+// falcon workspace rename <old-slug> <new-slug>
+workspaceCommand
+  .command('rename <old-slug> <new-slug>')
+  .description('Rename a workspace')
+  .option('-n, --name <name>', 'Also update the display name')
+  .action((oldSlug: string, newSlug: string, options: { name?: string }) => {
+    const db = getDatabase();
+
+    // Check old workspace exists
+    const workspace = db
+      .prepare('SELECT * FROM workspaces WHERE slug = ? AND status = ?')
+      .get(oldSlug, 'active') as Workspace | undefined;
+    if (!workspace) {
+      console.error(`Error: Workspace "${oldSlug}" not found or archived.`);
+      process.exit(1);
+    }
+
+    // Check new slug not taken
+    const existing = db.prepare('SELECT * FROM workspaces WHERE slug = ?').get(newSlug) as
+      | Workspace
+      | undefined;
+    if (existing) {
+      console.error(`Error: Slug "${newSlug}" is already in use.`);
+      process.exit(1);
+    }
+
+    // Update workspace
+    const now = new Date().toISOString();
+    const newName = options.name || workspace.name;
+
+    db.prepare('UPDATE workspaces SET slug = ?, name = ?, updated_at = ? WHERE id = ?').run(
+      newSlug,
+      newName,
+      now,
+      workspace.id
+    );
+
+    console.log(`Renamed workspace: ${oldSlug} → ${newSlug}`);
+    if (options.name) console.log(`Updated name: ${newName}`);
+  });

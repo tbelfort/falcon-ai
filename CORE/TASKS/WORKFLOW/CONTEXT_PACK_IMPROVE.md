@@ -100,7 +100,7 @@ Based on the review feedback, gather the missing information:
 
 ### For Missing Gotchas (External Libraries/APIs)
 
-If the task involves external libraries or APIs, use the template at `CORE/TEMPLATES/research/research-gotchas.md`.
+If the task involves external libraries or APIs, use the template at `.falcon/CORE/TEMPLATES/research/research-gotchas.md`.
 
 Include findings in the "Potential Gotchas" section with "(Source: Gemini research)" labels.
 

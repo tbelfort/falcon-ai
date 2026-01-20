@@ -14,6 +14,7 @@ import { doctorCommand } from './commands/doctor.js';
 import { healthCommand } from './commands/health.js';
 import { pauseCommand } from './commands/pause.js';
 import { resumeCommand } from './commands/resume.js';
+import { deleteCommand } from './commands/delete.js';
 
 const program = new Command();
 
@@ -30,6 +31,7 @@ program.addCommand(doctorCommand);
 program.addCommand(healthCommand);
 program.addCommand(pauseCommand);
 program.addCommand(resumeCommand);
+program.addCommand(deleteCommand);
 
 program.parseAsync().catch((error: Error) => {
   console.error('Error:', error.message);

@@ -217,7 +217,7 @@ For each dependency that needs ai_docs (new or outdated), run a research loop:
 
 #### Step A: Ask Gemini for Research
 
-Use the template at `CORE/TEMPLATES/research/ai-docs-research.md`.
+Use the template at `.falcon/CORE/TEMPLATES/research/ai-docs-research.md`.
 
 **Important:** Gemini returns research TO YOU. It does NOT create files.
 

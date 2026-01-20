@@ -291,7 +291,7 @@ Research React/TypeScript patterns:
 
 **Use extended thinking** to synthesize everything you've learned into a coherent context pack.
 
-Use the template from `CORE/TEMPLATES/context-pack-template.md`.
+Use the template from `.falcon/CORE/TEMPLATES/context-pack-template.md`.
 
 ### Before Writing: Think Through These Questions
 

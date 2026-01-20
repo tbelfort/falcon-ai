@@ -44,7 +44,7 @@ The PM is the only agent authorized to:
 
 ## Coordination
 
-- **DOC-MANAGER role:** If you need to create, update, or reorganize documentation, **load the DOC-MANAGER role first** by reading `CORE/ROLES/DOC-MANAGER.md`. This ensures you follow doc taxonomy rules and update indexes properly.
+- **DOC-MANAGER role:** If you need to create, update, or reorganize documentation, **load the DOC-MANAGER role first** by reading `.falcon/CORE/ROLES/DOC-MANAGER.md`. This ensures you follow doc taxonomy rules and update indexes properly.
 - OPS worker should be looped in for changes that affect deployment/runtime/observability/incident posture.
 - Q&A agent can be used to brainstorm and answer questions about the codebase and architecture.
 
@@ -268,7 +268,7 @@ Code                            ← Implements the spec
 | PM | INDEX.md only | Always allowed |
 | Everyone else | Nothing | Use `/linear-docs-issue` |
 
-See `CORE/ROLES/DOC-MANAGER.md` and `CORE/ROLES/ARCHITECT.md` for details.
+See `.falcon/CORE/ROLES/DOC-MANAGER.md` and `.falcon/CORE/ROLES/ARCHITECT.md` for details.
 
 ---
 

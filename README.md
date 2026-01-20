@@ -69,12 +69,12 @@ LINEAR ISSUE (Todo)
 
 | Stage | File | Purpose |
 |-------|------|---------|
-| Checkout | `CORE/TASKS/WORKFLOW/CHECKOUT.md` | Claim task, create branch |
-| Context Pack | `CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` | Extract relevant architecture into source-mapped doc |
-| Spec | `CORE/TASKS/WORKFLOW/SPEC.md` | Write implementation spec (detailed enough for zero judgment calls) |
-| Implement | `CORE/TASKS/WORKFLOW/IMPLEMENT.md` | Build from spec, create PR |
-| PR Review | `CORE/TASKS/WORKFLOW/PR_REVIEW.md` | 6 scouts + 6 judges evaluate the PR |
-| Merge | `CORE/TASKS/WORKFLOW/MERGE.md` | PM merges approved PRs |
+| Checkout | `.falcon/CORE/TASKS/WORKFLOW/CHECKOUT.md` | Claim task, create branch |
+| Context Pack | `.falcon/CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` | Extract relevant architecture into source-mapped doc |
+| Spec | `.falcon/CORE/TASKS/WORKFLOW/SPEC.md` | Write implementation spec (detailed enough for zero judgment calls) |
+| Implement | `.falcon/CORE/TASKS/WORKFLOW/IMPLEMENT.md` | Build from spec, create PR |
+| PR Review | `.falcon/CORE/TASKS/WORKFLOW/PR_REVIEW.md` | 6 scouts + 6 judges evaluate the PR |
+| Merge | `.falcon/CORE/TASKS/WORKFLOW/MERGE.md` | PM merges approved PRs |
 
 **Key principle:** Specs leave nothing to decide. If the implementor must make judgment calls, the spec is incomplete.
 
@@ -164,7 +164,7 @@ A decision tree (not LLM judgment) classifies what went wrong:
 
 Warnings are injected at two workflow stages:
 
-**1. Context Pack Agent** (`CORE/TASKS/WORKFLOW/CONTEXT_PACK.md`)
+**1. Context Pack Agent** (`.falcon/CORE/TASKS/WORKFLOW/CONTEXT_PACK.md`)
 ```markdown
 <!-- META-WARNING: NON-CITABLE CONTEXT -->
 The following issues have occurred in similar past work:
@@ -175,7 +175,7 @@ The following issues have occurred in similar past work:
 Always use parameterized queries for SQL. Never interpolate user input.
 ```
 
-**2. Spec Agent** (`CORE/TASKS/WORKFLOW/SPEC.md`)
+**2. Spec Agent** (`.falcon/CORE/TASKS/WORKFLOW/SPEC.md`)
 ```markdown
 <!-- META-WARNING: NON-CITABLE CONTEXT -->
 ### Rate Limiting Required (HIGH)
@@ -191,10 +191,20 @@ The warnings are marked non-citable — agents should apply the guidance silentl
 
 ## Installation
 
+### Current Limitations
+
+**Single-developer per project (v1).** All pattern data is stored locally on your machine (`~/.falcon-ai/db/falcon.db`). Multi-developer sync is planned for a future release.
+
+This means:
+- Patterns you learn won't automatically sync to teammates
+- Each developer has their own independent guardrail history
+- This is fine for solo projects and local development
+
 ### Requirements
 
 - Node.js 20.0.0 or later
 - Git repository (falcon-ai operates at the repo level)
+- Git remote is **not required** (local-only repos work fine)
 - `ANTHROPIC_API_KEY` environment variable (for attribution)
 
 ### Install
@@ -219,6 +229,9 @@ falcon init
 
 This creates:
 - `.falcon/config.yaml` — Project configuration
+- `.falcon/CORE/` — Workflow tasks, templates, and roles
+- `.claude/commands/` — User-invokable commands
+- `.claude/agents/` — Scout and judge agents
 - Seeds 11 baseline security principles
 - Registers project in falcon-ai database
 
@@ -299,12 +312,12 @@ When attribution precision drops below threshold, the kill switch automatically 
 
 | Role | File | Responsibilities |
 |------|------|------------------|
-| PM | `CORE/ROLES/PM.md` | Merge PRs, sync worktrees, manage Linear |
-| Architect | `CORE/ROLES/ARCHITECT.md` | Technical decisions, architecture |
-| QA | `CORE/ROLES/QA.md` | Test strategy, quality gates |
-| DBA | `CORE/ROLES/DBA.md` | Database design, migrations |
-| Ops | `CORE/ROLES/OPS.md` | Deployment, monitoring, incidents |
-| Doc-Manager | `CORE/ROLES/DOC-MANAGER.md` | Documentation taxonomy |
+| PM | `.falcon/CORE/ROLES/PM.md` | Merge PRs, sync worktrees, manage Linear |
+| Architect | `.falcon/CORE/ROLES/ARCHITECT.md` | Technical decisions, architecture |
+| QA | `.falcon/CORE/ROLES/QA.md` | Test strategy, quality gates |
+| DBA | `.falcon/CORE/ROLES/DBA.md` | Database design, migrations |
+| Ops | `.falcon/CORE/ROLES/OPS.md` | Deployment, monitoring, incidents |
+| Doc-Manager | `.falcon/CORE/ROLES/DOC-MANAGER.md` | Documentation taxonomy |
 
 ### Agents (PR Review)
 
@@ -313,30 +326,30 @@ The PR Review workflow uses specialized agents:
 **Scouts** (Sonnet — fast, flag potential issues):
 | Agent | File | Focus |
 |-------|------|-------|
-| security | `CORE/agents/pr-scout-security.md` | Security vulnerabilities |
-| bugs | `CORE/agents/pr-scout-bugs.md` | Logic errors, edge cases |
-| spec | `CORE/agents/pr-scout-spec.md` | Spec compliance |
-| tests | `CORE/agents/pr-scout-tests.md` | Test coverage |
-| docs | `CORE/agents/pr-scout-docs.md` | Documentation |
-| decisions | `CORE/agents/pr-scout-decisions.md` | Architectural decisions |
-| adversarial | `CORE/agents/pr-scout-adversarial.md` | Attack vectors |
+| security | `.claude/agents/pr-scout-security.md` | Security vulnerabilities |
+| bugs | `.claude/agents/pr-scout-bugs.md` | Logic errors, edge cases |
+| spec | `.claude/agents/pr-scout-spec.md` | Spec compliance |
+| tests | `.claude/agents/pr-scout-tests.md` | Test coverage |
+| docs | `.claude/agents/pr-scout-docs.md` | Documentation |
+| decisions | `.claude/agents/pr-scout-decisions.md` | Architectural decisions |
+| adversarial | `.claude/agents/pr-scout-adversarial.md` | Attack vectors |
 
 **Judges** (Opus — thorough, evaluate scout findings):
 | Agent | File | Focus |
 |-------|------|-------|
-| security | `CORE/agents/pr-judge-security.md` | Confirm/reject security findings |
-| bugs | `CORE/agents/pr-judge-bugs.md` | Confirm/reject bug findings |
+| security | `.claude/agents/pr-judge-security.md` | Confirm/reject security findings |
+| bugs | `.claude/agents/pr-judge-bugs.md` | Confirm/reject bug findings |
 | ... | ... | ... |
 
 ### Commands
 
 | Command | File | Purpose |
 |---------|------|---------|
-| checkout | `CORE/commands/checkout.md` | Start work on an issue |
-| doc-review | `CORE/commands/doc-review.md` | Review documentation |
-| merge | `CORE/commands/pm/merge.md` | Merge approved PRs |
-| build_sprint | `CORE/commands/pm/build_sprint.md` | Create sprint from backlog |
-| code-review | `CORE/commands/pm/code-review.md` | Trigger code review |
+| checkout | `.claude/commands/checkout.md` | Start work on an issue |
+| doc-review | `.claude/commands/doc-review.md` | Review documentation |
+| merge | `.claude/commands/pm/merge.md` | Merge approved PRs |
+| build_sprint | `.claude/commands/pm/build_sprint.md` | Create sprint from backlog |
+| code-review | `.claude/commands/pm/code-review.md` | Trigger code review |
 
 ---
 
@@ -453,16 +466,32 @@ await onPRReviewComplete(db, {
 | ProvisionalAlert | Project | Short-lived alert (14 days) |
 | InjectionLog | Project | Audit trail of injections |
 
-### Project Structure
+### Installed Structure (After `falcon init`)
+
+```
+your-project/
+├── .falcon/
+│   ├── config.yaml          # Project configuration
+│   └── CORE/
+│       ├── TASKS/WORKFLOW/  # Workflow stages (checkout, spec, implement, etc.)
+│       ├── ROLES/           # Agent roles (PM, architect, QA, etc.)
+│       └── TEMPLATES/       # Document templates
+│
+└── .claude/
+    ├── commands/            # User-invokable commands
+    └── agents/              # Specialized agents (scouts, judges)
+```
+
+### Package Structure (falcon-ai source)
 
 ```
 falcon-ai/
-├── CORE/
-│   ├── TASKS/WORKFLOW/      # Workflow stages (checkout, spec, implement, etc.)
-│   ├── ROLES/               # Agent roles (PM, architect, QA, etc.)
-│   ├── agents/              # Specialized agents (scouts, judges)
-│   ├── commands/            # User-invokable commands
-│   └── TEMPLATES/           # Document templates
+├── CORE/                    # Source files (copied during init)
+│   ├── TASKS/WORKFLOW/
+│   ├── ROLES/
+│   ├── agents/
+│   ├── commands/
+│   └── TEMPLATES/
 │
 ├── src/
 │   ├── cli/                 # Command-line interface
