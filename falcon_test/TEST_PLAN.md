@@ -3,6 +3,7 @@
 **Purpose:** Determine if the Falcon guardrail system improves code quality by reducing PR review findings.
 
 **Date:** 2026-01-19
+**Updated:** 2026-01-20
 **Status:** Ready for execution
 
 ---
@@ -10,19 +11,31 @@
 ## 1. Test Overview
 
 ### Hypothesis
-Injecting warnings from past failures into Context Pack and Spec agents reduces the number and severity of PR review findings.
+Injecting warnings from past failures into Context Pack and Spec agents reduces the number and severity of PR review findings. Additionally, pattern accumulation within treatment runs should show improvement over time.
 
 ### Design
-- **5 different apps**, each built twice (with Falcon, without Falcon)
-- **10 total runs** (5 parallel pairs)
-- **Paired comparison:** For each app, compare findings between treatment and control
+- **5 different apps**, each built 10 times (5 with Falcon, 5 without Falcon)
+- **50 total runs** (10 runs per app)
+- **Interleaved execution:** T1 C1 T2 C2 T3 C3 T4 C4 T5 C5 per app
+- **Pattern accumulation:** Treatment runs learn from previous treatment runs within the same app
+- **Statistical comparison:** Compare mean severity scores between treatment and control groups
+
+### Why 5/5 Instead of 1/1?
+- Single runs have high variance — one bad run could mask real effects
+- 5 runs per condition allows statistical comparison (t-test)
+- Can observe **learning curve** within treatment group (do runs 4-5 outperform runs 1-2?)
+- More robust signal for go/no-go decision
 
 ### Success Criteria
+
 | Result | Interpretation |
 |--------|----------------|
-| Falcon wins 4-5 out of 5 apps | Strong signal — system works |
-| Falcon wins 2-3 out of 5 apps | Inconclusive — need more data |
-| Falcon wins 0-2 out of 5 apps | Not working — reconsider approach |
+| Treatment mean significantly lower in ≥4 apps | **STRONG POSITIVE** — system works |
+| Treatment mean significantly lower in 2-3 apps | **WEAK POSITIVE** — need more data |
+| Treatment mean lower in 0-1 apps | **NEGATIVE** — system not helping |
+| Treatment shows improvement trend (T5 < T1) in ≥3 apps | **LEARNING SIGNAL** — accumulation working |
+
+**Significance threshold:** Treatment mean severity score at least 20% lower than control, OR p < 0.1 on one-tailed t-test.
 
 ---
 
@@ -31,21 +44,23 @@ Injecting warnings from past failures into Context Pack and Spec agents reduces 
 ### Treatment (WITH Falcon)
 - Baseline principles (B01-B11) injected into Context Pack agent
 - Baseline principles injected into Spec agent
-- Any learned patterns from previous runs injected (App 2-5 only)
-- Full attribution pipeline active after PR review
+- **Pattern accumulation:** Patterns learned from T1 injected into T2, T1+T2 into T3, etc.
+- Full attribution pipeline active after each PR review
+- Each treatment run builds on learnings from previous treatment runs (same app)
 
 ### Control (WITHOUT Falcon)
 - No warnings injected into Context Pack agent
 - No warnings injected into Spec agent
 - No attribution pipeline
 - Standard workflow only
+- **No accumulation** — each control run is independent
 
 ### Constants (Both Conditions)
-- Same Linear issue / requirements for each app pair
+- Same Linear issue / requirements for each app (all 10 runs use identical spec)
 - Same models: Opus for Context Pack/Spec, Sonnet for Implementation
 - Same PR Review configuration (6 scouts, 6 judges)
 - Same temperature settings (default)
-- Same codebase starting point (empty repo with standard setup)
+- Same codebase starting point (empty repo with standard setup per run)
 
 ---
 
@@ -77,61 +92,89 @@ See `apps/APP_1_INVENTORY_CLI.md` through `apps/APP_5_USER_ADMIN_CLI.md` for det
 
 ## 4. Execution Order
 
-### Phase 1: Parallel App Creation (Day 1)
+### Interleaved Pattern Per App
 
-Run all 5 app pairs in parallel:
-
+Each app runs 10 times in this order:
 ```
-App 1: Treatment (with Falcon) ──┐
-App 1: Control (without Falcon) ─┼── Parallel Group 1
-App 2: Treatment ────────────────┤
-App 2: Control ──────────────────┤
-App 3: Treatment ────────────────┤
-App 3: Control ──────────────────┤
-App 4: Treatment ────────────────┤
-App 4: Control ──────────────────┤
-App 5: Treatment ────────────────┤
-App 5: Control ──────────────────┘
+T1 → C1 → T2 → C2 → T3 → C3 → T4 → C4 → T5 → C5
 ```
 
-**Important:** Randomize which condition (treatment/control) runs first for each app to avoid ordering effects.
+**Why interleaved?**
+- Controls for temporal drift (model behavior changes over time)
+- Ensures treatment and control runs are distributed evenly
+- Prevents clustering effects
 
-### Phase 2: Pattern Transfer Test (Day 2, Optional)
+### Pattern Accumulation (Treatment Only)
 
-If Phase 1 shows positive signal, run App 6 (new app) to test if patterns learned from Apps 1-5 help a novel app.
+```
+T1: Baseline principles only (B01-B11)
+    ↓ PR Review → Attribution → Learn patterns
+T2: Baseline + patterns from T1
+    ↓ PR Review → Attribution → Learn patterns
+T3: Baseline + patterns from T1, T2
+    ↓ PR Review → Attribution → Learn patterns
+T4: Baseline + patterns from T1, T2, T3
+    ↓ PR Review → Attribution → Learn patterns
+T5: Baseline + patterns from T1, T2, T3, T4
+```
+
+### Cross-App Pattern Transfer
+
+Patterns learned within App N treatment runs do **NOT** transfer to App N+1. Each app starts fresh with only baseline principles for T1.
+
+**Rationale:** We want to measure within-app learning. Cross-app transfer is a separate hypothesis for Phase 2.
+
+### Parallel Execution
+
+Apps 1-5 can run in parallel (they are independent). Within each app, runs are sequential (interleaved order).
+
+```
+App 1: T1 C1 T2 C2 T3 C3 T4 C4 T5 C5  ──┐
+App 2: T1 C1 T2 C2 T3 C3 T4 C4 T5 C5  ──┼── Parallel
+App 3: T1 C1 T2 C2 T3 C3 T4 C4 T5 C5  ──┤
+App 4: T1 C1 T2 C2 T3 C3 T4 C4 T5 C5  ──┤
+App 5: T1 C1 T2 C2 T3 C3 T4 C4 T5 C5  ──┘
+```
+
+### Phase 2: Cross-App Transfer Test (Optional)
+
+If Phase 1 shows positive signal, run App 6 (new app) with all patterns learned from Apps 1-5 to test cross-app transfer.
 
 ---
 
 ## 5. Linear Issue Creation
 
-### For Each App, Create TWO Issues:
+### For Each App, Create 10 Issues:
 
-**Treatment Issue:**
+**Treatment Issues (T1-T5):**
 ```
-Title: [FALCON-TEST] {App Name} - WITH Falcon
-Labels: falcon_test, treatment, app_{N}
-Description: {Copy from apps/APP_{N}.md}
+Title: [FALCON-TEST] {App Name} - Treatment Run {N}
+Labels: falcon_test, treatment, app_{A}, run_{N}
+Description: {Copy from apps/APP_{A}.md}
 
 Add to description footer:
 ---
 ## Test Configuration
 - Falcon Injection: ENABLED
+- App: {A}
+- Run: T{N}
 - Test Run ID: {generate UUID}
-- Paired With: {Control Issue ID}
+- Accumulates From: {T1...T(N-1) issue IDs, or "None" for T1}
 ```
 
-**Control Issue:**
+**Control Issues (C1-C5):**
 ```
-Title: [FALCON-TEST] {App Name} - WITHOUT Falcon
-Labels: falcon_test, control, app_{N}
-Description: {Copy from apps/APP_{N}.md}
+Title: [FALCON-TEST] {App Name} - Control Run {N}
+Labels: falcon_test, control, app_{A}, run_{N}
+Description: {Copy from apps/APP_{A}.md}
 
 Add to description footer:
 ---
 ## Test Configuration
 - Falcon Injection: DISABLED
+- App: {A}
+- Run: C{N}
 - Test Run ID: {generate UUID}
-- Paired With: {Treatment Issue ID}
 ```
 
 ### Linear Project Setup
@@ -139,6 +182,7 @@ Add to description footer:
 2. Create label: `falcon_test`
 3. Create labels: `treatment`, `control`
 4. Create labels: `app_1`, `app_2`, `app_3`, `app_4`, `app_5`
+5. Create labels: `run_1`, `run_2`, `run_3`, `run_4`, `run_5`
 
 ---
 
@@ -158,6 +202,8 @@ After PR Review completes, record:
 | Security Findings | Count where scoutType = security |
 | Correctness Findings | Count where scoutType in (bug, correctness) |
 | Finding Categories | Breakdown by findingCategory |
+| Patterns Injected | Count of patterns injected (treatment only) |
+| New Patterns Learned | Count of new patterns created (treatment only) |
 
 ### Severity Score Formula
 ```
@@ -171,28 +217,45 @@ Create `falcon_test/results/APP_{N}_results.md` for each app:
 ```markdown
 # App {N} Results: {App Name}
 
-## Treatment Run (WITH Falcon)
-- Issue: {Linear issue key}
-- PR: {PR number}
-- Total Findings: X
-- Severity Score: Y
-- Breakdown: {CRITICAL: a, HIGH: b, MEDIUM: c, LOW: d}
-- Security Findings: Z
-- Patterns Injected: {list pattern IDs if any}
+## Raw Data
 
-## Control Run (WITHOUT Falcon)
-- Issue: {Linear issue key}
-- PR: {PR number}
-- Total Findings: X
-- Severity Score: Y
-- Breakdown: {CRITICAL: a, HIGH: b, MEDIUM: c, LOW: d}
-- Security Findings: Z
+### Treatment Runs
+| Run | Issue | PR | Total | Crit | High | Med | Low | Severity Score | Patterns Injected | New Patterns |
+|-----|-------|----|----|------|------|-----|-----|----------------|-------------------|--------------|
+| T1  | KEY-1 | #1 | X  | a    | b    | c   | d   | Y              | 0                 | Z            |
+| T2  | KEY-2 | #2 | X  | a    | b    | c   | d   | Y              | Z                 | Z            |
+| T3  | KEY-3 | #3 | X  | a    | b    | c   | d   | Y              | Z                 | Z            |
+| T4  | KEY-4 | #4 | X  | a    | b    | c   | d   | Y              | Z                 | Z            |
+| T5  | KEY-5 | #5 | X  | a    | b    | c   | d   | Y              | Z                 | Z            |
 
-## Comparison
-- Finding Difference: Treatment - Control = {+/- N}
-- Severity Score Difference: {+/- N}
-- Winner: {Treatment / Control / Tie}
-- Notes: {Any observations}
+### Control Runs
+| Run | Issue | PR | Total | Crit | High | Med | Low | Severity Score |
+|-----|-------|----|----|------|------|-----|-----|----------------|
+| C1  | KEY-6 | #6 | X  | a    | b    | c   | d   | Y              |
+| C2  | KEY-7 | #7 | X  | a    | b    | c   | d   | Y              |
+| C3  | KEY-8 | #8 | X  | a    | b    | c   | d   | Y              |
+| C4  | KEY-9 | #9 | X  | a    | b    | c   | d   | Y              |
+| C5  | KEY-10| #10| X  | a    | b    | c   | d   | Y              |
+
+## Statistical Analysis
+
+### Treatment vs Control
+- Treatment Mean Severity: X.XX (std: Y.YY)
+- Control Mean Severity: X.XX (std: Y.YY)
+- Difference: X.XX (XX% reduction)
+- t-test p-value: 0.XXX
+- Winner: {Treatment / Control / Inconclusive}
+
+### Learning Trend (Treatment Only)
+- T1 Severity: X
+- T5 Severity: Y
+- Trend: {Improving / Flat / Degrading}
+- Early (T1-T2) Mean: X.XX
+- Late (T4-T5) Mean: X.XX
+- Improvement: XX%
+
+## Notes
+{Observations, anomalies, patterns noticed}
 ```
 
 ---
@@ -203,33 +266,53 @@ Create `falcon_test/results/APP_{N}_results.md` for each app:
 
 | Condition | Winner |
 |-----------|--------|
-| Treatment severity score < Control severity score | Treatment wins |
-| Treatment severity score > Control severity score | Control wins |
-| Scores equal, Treatment total findings < Control | Treatment wins |
-| Scores equal, Treatment total findings > Control | Control wins |
-| All equal | Tie (counts as 0.5 for each) |
+| Treatment mean ≥20% lower than Control mean | **Treatment wins** |
+| Control mean ≥20% lower than Treatment mean | **Control wins** |
+| Difference <20% but t-test p < 0.1 favoring Treatment | **Treatment wins (marginal)** |
+| Difference <20% but t-test p < 0.1 favoring Control | **Control wins (marginal)** |
+| Otherwise | **Inconclusive** |
+
+### Learning Signal (Per App)
+
+| Condition | Signal |
+|-----------|--------|
+| T4-T5 mean ≥30% lower than T1-T2 mean | **Strong learning** |
+| T4-T5 mean 10-30% lower than T1-T2 mean | **Weak learning** |
+| T4-T5 mean within 10% of T1-T2 mean | **No learning** |
+| T4-T5 mean >10% higher than T1-T2 mean | **Degradation** |
 
 ### Overall Test Result
 
 ```
-Falcon Score = (Treatment wins) + (Ties × 0.5)
+Treatment Wins = count of apps where Treatment wins
+Learning Apps = count of apps showing Strong or Weak learning
 
-If Falcon Score >= 4.0 → STRONG POSITIVE (proceed with system)
-If Falcon Score >= 2.5 → WEAK POSITIVE (need more testing)
-If Falcon Score < 2.5  → NEGATIVE (system not helping)
+If Treatment Wins >= 4 AND Learning Apps >= 3:
+    → STRONG POSITIVE (system works and learns)
+
+If Treatment Wins >= 4 AND Learning Apps < 3:
+    → POSITIVE (system works, learning unclear)
+
+If Treatment Wins >= 2 AND Learning Apps >= 3:
+    → MIXED (learning works, but not consistently better)
+
+If Treatment Wins < 2:
+    → NEGATIVE (system not helping)
 ```
 
 ### Additional Analysis
 
 If results are positive, also check:
 1. **Which baseline principles triggered?** (Were warnings relevant?)
-2. **Any patterns learned that could help future apps?**
+2. **Which patterns were learned most frequently?** (Common failure modes)
 3. **False positive rate** — Did any warnings cause confusion?
+4. **Pattern quality** — Were learned patterns actionable?
 
 If results are negative, check:
 1. **Were warnings actually injected?** (Check injection logs)
 2. **Were warnings relevant to the failures?** (Tag mismatch?)
-3. **Did control have fewer bugs by chance?** (Noise)
+3. **High variance?** (Large std dev in both groups)
+4. **Ceiling effect?** (Both groups had very few findings)
 
 ---
 
@@ -241,28 +324,34 @@ You are managing the Falcon validation test. Your responsibilities:
 
 1. **Setup:**
    - Create Linear project and labels
-   - Create 10 Linear issues (2 per app) using specs in `apps/`
+   - Create 50 Linear issues (10 per app) using specs in `apps/`
    - Ensure issues are properly labeled and linked
+   - Verify Falcon injection toggle works
 
 2. **Execution:**
-   - Trigger workflows for all 10 issues
-   - Monitor for completion
-   - Do NOT intervene in the workflow — let it run naturally
+   - For each app, execute runs in interleaved order: T1 C1 T2 C2 T3 C3 T4 C4 T5 C5
+   - After each treatment run, wait for attribution pipeline to complete before next treatment run
+   - Control runs can proceed immediately (no waiting)
+   - Apps can run in parallel
 
 3. **Measurement:**
    - After each PR Review completes, extract findings
    - Record in `results/APP_{N}_results.md`
    - Calculate severity scores
+   - Track patterns injected and learned (treatment only)
 
 4. **Judgment:**
-   - After all 10 runs complete, calculate overall Falcon Score
+   - After all 50 runs complete, calculate statistics for each app
+   - Determine per-app winners and learning signals
    - Write summary to `results/SUMMARY.md`
    - Include recommendation: proceed / more testing / stop
 
 5. **Important:**
+   - Treatment runs MUST wait for previous treatment attribution to complete
+   - Control runs are independent — no waiting needed
    - Keep treatment and control runs isolated
-   - Don't let learnings from control runs affect treatment (or vice versa)
    - If a run fails for technical reasons (not code quality), re-run it
+   - Log any anomalies or issues
 
 ### For Workflow Agents (Context Pack, Spec, Implementation)
 
@@ -276,18 +365,18 @@ No special instructions. Run normally. The test harness controls whether Falcon 
 falcon_test/
 ├── TEST_PLAN.md              # This file
 ├── apps/
-│   ├── APP_1.md              # REST API requirements
-│   ├── APP_2.md              # Data Pipeline requirements
-│   ├── APP_3.md              # Auth Service requirements
-│   ├── APP_4.md              # Webhook Handler requirements
-│   └── APP_5.md              # Admin Dashboard API requirements
+│   ├── APP_1_INVENTORY_CLI.md
+│   ├── APP_2_DATA_SYNC_CLI.md
+│   ├── APP_3_CREDENTIAL_MANAGER_CLI.md
+│   ├── APP_4_LOG_ANALYZER_CLI.md
+│   └── APP_5_USER_ADMIN_CLI.md
 └── results/
-    ├── APP_1_results.md      # Filled after runs complete
+    ├── APP_1_results.md      # Raw data + analysis for App 1
     ├── APP_2_results.md
     ├── APP_3_results.md
     ├── APP_4_results.md
     ├── APP_5_results.md
-    └── SUMMARY.md            # Overall test summary
+    └── SUMMARY.md            # Overall test summary + recommendation
 ```
 
 ---
@@ -295,13 +384,30 @@ falcon_test/
 ## 10. Checklist Before Starting
 
 - [ ] Linear project created
-- [ ] Labels created (falcon_test, treatment, control, app_1-5)
-- [ ] All 10 issues created and linked
+- [ ] Labels created (falcon_test, treatment, control, app_1-5, run_1-5)
+- [ ] All 50 issues created and properly labeled
 - [ ] Falcon injection toggle working (can enable/disable)
+- [ ] Attribution pipeline working (patterns stored after PR review)
+- [ ] Pattern injection working (patterns retrieved and injected)
 - [ ] PR Review pipeline working
 - [ ] Results folder created
 - [ ] Test manager agent briefed
 
 ---
 
-*Test plan created 2026-01-19. Ready for execution.*
+## 11. Quick Reference
+
+| Metric | Value |
+|--------|-------|
+| Total Apps | 5 |
+| Runs per App | 10 (5 treatment, 5 control) |
+| Total Runs | 50 |
+| Execution Order | T1 C1 T2 C2 T3 C3 T4 C4 T5 C5 |
+| Pattern Accumulation | Within app treatment runs only |
+| Cross-App Transfer | None (Phase 1) |
+| Success Threshold | ≥4 apps with Treatment winning |
+| Learning Threshold | ≥3 apps showing improvement trend |
+
+---
+
+*Test plan created 2026-01-19. Updated 2026-01-20 with 5/5 design.*
