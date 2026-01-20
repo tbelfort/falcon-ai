@@ -272,7 +272,7 @@ git push
 **Linear is the source of truth.** Update the existing documents (don't create new versions).
 
 1. **Find the document ID** from the `**Spec Doc:**` URL in the Linear comments:
-   - Example URL: `https://linear.app/content-foundry/document/con-123-spec-title-b61c234e4b40`
+   - Example URL: `https://linear.app/your-team/document/con-123-spec-title-b61c234e4b40`
    - The document ID is the last segment: `b61c234e4b40`
 
 2. **Update the spec document:**
