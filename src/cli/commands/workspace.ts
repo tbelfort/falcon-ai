@@ -29,6 +29,20 @@ function validateInput(value: string, fieldName: string): void {
   }
 }
 
+/**
+ * Validate slug format.
+ * Must contain only lowercase alphanumeric, underscores, and hyphens.
+ * Must contain at least one alphanumeric character.
+ */
+function validateSlug(slug: string, fieldName: string): void {
+  if (!/^[a-z0-9_-]+$/.test(slug)) {
+    throw new Error(`${fieldName} must contain only lowercase letters, numbers, underscores, and hyphens`);
+  }
+  if (!/[a-z0-9]/.test(slug)) {
+    throw new Error(`${fieldName} must contain at least one alphanumeric character`);
+  }
+}
+
 interface Workspace {
   id: string;
   name: string;
@@ -114,7 +128,15 @@ workspaceCommand
     }
 
     const db = getDatabase();
-    const slug = options.slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const slug = options.slug || name.toLowerCase().replace(/[^a-z0-9_]/g, '-');
+
+    // Validate slug format
+    try {
+      validateSlug(slug, options.slug ? 'Custom slug' : 'Generated slug');
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
 
     // Check uniqueness
     const existing = db.prepare('SELECT * FROM workspaces WHERE slug = ?').get(slug) as
@@ -213,6 +235,14 @@ workspaceCommand
 
     // Derive new slug from name (or use custom slug)
     const newSlug = options.slug || newName.toLowerCase().replace(/[^a-z0-9_]/g, '-');
+
+    // Validate slug format
+    try {
+      validateSlug(newSlug, options.slug ? 'Custom slug' : 'Generated slug');
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
 
     // Check new slug not taken (unless it's the same workspace)
     if (newSlug !== workspace.slug) {
@@ -398,6 +428,8 @@ workspaceCommand
           if (!ALLOWED_PROJECT_TABLES.has(table)) {
             throw new Error(`Attempted deletion from unauthorized table: ${table}`);
           }
+          // SECURITY: Table names are compile-time constants from `projectTables` array above.
+          // Whitelist validation is defense-in-depth. Do NOT pass user input here.
           db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(project.id);
         }
       }

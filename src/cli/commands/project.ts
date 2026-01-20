@@ -55,10 +55,14 @@ function listProjects(options: { workspace?: string; all?: boolean }): void {
       const workspace = db
         .prepare('SELECT name FROM workspaces WHERE id = ?')
         .get(workspaceId) as { name: string } | undefined;
-      workspaceName = workspace?.name || null;
-    } catch {
+      workspaceName = workspace?.name ?? null;
+    } catch (e) {
       // Not in a project - list all projects across all workspaces
-      workspaceId = null;
+      if (e instanceof ScopeResolutionError) {
+        workspaceId = null;
+      } else {
+        throw e;
+      }
     }
   }
 
@@ -76,10 +80,10 @@ function listProjects(options: { workspace?: string; all?: boolean }): void {
     ) as ProjectWithWorkspace[];
 
     if (projects.length === 0) {
-      console.log(`No projects found in workspace "${workspaceName}".`);
+      console.log(`No projects found in workspace "${workspaceName ?? 'unknown'}".`);
       return;
     }
-    console.log(`Projects in workspace "${workspaceName}":\n`);
+    console.log(`Projects in workspace "${workspaceName ?? 'unknown'}":\n`);
   } else {
     // List all projects across all workspaces
     const query = options.all
