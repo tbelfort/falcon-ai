@@ -69,7 +69,7 @@ When a PR review finds an issue:
 
 ```bash
 # Clone and install
-git clone <repo-url>
+git clone https://github.com/tbelfort/falcon-ai.git
 cd falcon-ai
 npm install
 npm run build

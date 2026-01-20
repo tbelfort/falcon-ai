@@ -3,6 +3,50 @@
   "version": "0.1.0",
   "description": "Pattern-based guardrail system for multi-agent development",
   "type": "module",
+  "main": "./dist/workflow/index.js",
+  "types": "./dist/workflow/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/workflow/index.js",
+      "types": "./dist/workflow/index.d.ts"
+    },
+    "./workflow": {
+      "import": "./dist/workflow/index.js",
+      "types": "./dist/workflow/index.d.ts"
+    },
+    "./storage": {
+      "import": "./dist/storage/db.js",
+      "types": "./dist/storage/db.d.ts"
+    },
+    "./schemas": {
+      "import": "./dist/schemas/index.js",
+      "types": "./dist/schemas/index.d.ts"
+    },
+    "./attribution": {
+      "import": "./dist/attribution/index.js",
+      "types": "./dist/attribution/index.d.ts"
+    },
+    "./injection": {
+      "import": "./dist/injection/index.js",
+      "types": "./dist/injection/index.d.ts"
+    },
+    "./evolution": {
+      "import": "./dist/evolution/index.js",
+      "types": "./dist/evolution/index.d.ts"
+    },
+    "./metrics": {
+      "import": "./dist/metrics/index.js",
+      "types": "./dist/metrics/index.d.ts"
+    },
+    "./services": {
+      "import": "./dist/services/index.js",
+      "types": "./dist/services/index.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config/loader.js",
+      "types": "./dist/config/loader.d.ts"
+    }
+  },
   "bin": {
     "falcon": "./dist/cli/index.js"
   },
