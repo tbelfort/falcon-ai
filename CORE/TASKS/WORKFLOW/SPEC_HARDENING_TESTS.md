@@ -24,7 +24,7 @@ Your job is to review the existing spec and ensure it has **comprehensive test c
 ## Step 1: Get Issue Details
 
 ```bash
-python project-management/tools/linear.py issue get CON-XXX --json
+# Use /linear-tool skill for Linear operations
 ```
 
 **Extract from comments:**
@@ -42,14 +42,13 @@ git fetch origin
 git checkout <branch-name>
 
 # Update status
-python project-management/tools/linear.py issue update CON-XXX --state "Spec - Hardening Tests"
+# Use /linear-tool skill for Linear operations
 
 # Swap labels (remove agent_ready if present, add agent_working)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
+# Use /linear-tool skill for Linear operations
 
 # Comment to claim
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Starting spec hardening — analyzing test coverage."
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -74,19 +73,13 @@ Create a comprehensive list of test cases covering:
 ### Mandatory Categories (ALL SPECS)
 
 - Import boundary tests (verify no forbidden imports per `LAYERS.md`)
-- Error handling tests (verify FoundryError usage per `QUALITY-ATTRIBUTES.md`)
+- Error handling tests (verify <CONFIG>Error base class</CONFIG> usage per `QUALITY-ATTRIBUTES.md`)
 - Functional tests (MUST/SHOULD requirements)
 - Edge cases (empty inputs, boundaries, null handling)
 
 ### Conditional Categories (by component type)
 
-Per `docs/systems/architecture/COMPONENT-TYPES.md`:
-
-- **Pydantic models:** Construction, validation, immutability, cross-field validation
-- **Path handling:** 9 security tests per `docs/systems/architecture/SECURITY.md#path-security-artifact-paths`
-- **Forge-stage:** Artifact contract tests (declared IO, receipts, manifests)
-- **Worker/engine/weaver:** Async tests (completion, timeout, cancellation)
-- **UX:** Component render tests
+<CONFIG>Component type requirements</CONFIG>
 
 ### Integration and Cross-Cutting
 
@@ -188,12 +181,12 @@ git push
 **Linear is the source of truth.** Update the existing spec document (don't create a new one).
 
 1. **Find the document ID** from the `**Spec Doc:**` URL in the Linear comments:
-   - Example URL: `https://linear.app/content-foundry/document/con-123-spec-title-b61c234e4b40`
+   - Example URL: `https://linear.app/<CONFIG>Linear workspace</CONFIG>/document/con-123-spec-title-b61c234e4b40`
    - The document ID is the last segment: `b61c234e4b40`
 
 2. **Update the document:**
    ```bash
-   python project-management/tools/linear.py document update <document-id> --content-file <path-to-spec.md>
+   # Use /linear-tool skill for Linear operations
    ```
 
 The document URL stays the same — no need to update references.
@@ -204,28 +197,13 @@ The document URL stays the same — no need to update references.
 
 ```bash
 # Move to Spec In Review
-python project-management/tools/linear.py issue update CON-XXX --state "Spec In Review"
+# Use /linear-tool skill for Linear operations
 
 # CRITICAL: Swap labels
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+# Use /linear-tool skill for Linear operations
 
 # Comment with summary
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Spec hardening complete.
-
-**Test cases added:**
-- Unit tests: <count>
-- Edge case tests: <count>
-- Error handling tests: <count>
-- Integration tests: <count>
-
-**Spec Doc:** Updated in place (same URL as before)
-
-**Coverage:** All MUST requirements now have test cases.
-
-Ready for spec review.
-
-**Next steps:** Run \`/checkout CON-XXX\` to start spec review."
+# Use /linear-tool skill for Linear operations
 ```
 
 ---

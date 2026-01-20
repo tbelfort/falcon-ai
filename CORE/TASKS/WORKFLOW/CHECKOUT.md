@@ -12,15 +12,21 @@ The checkout command can include optional overrides:
 - `CON-XXX` — Issue ID only (default routing)
 - `CON-XXX --fix` — Force fix mode for "In Review" issues
 - `CON-XXX --review` — Force review mode for "In Review" issues (re-review even if review-failed label exists)
+- `CON-XXX --agents <N>` — Use N sub-agents for implementation (2-4, only for "Ready to Start"/"Work Started")
 
-Extract the issue ID and any override flag from the command.
+Extract the issue ID and any flags from the command.
+
+**Store for later:**
+- `ISSUE_ID` — The CON-XXX identifier
+- `OVERRIDE_FLAG` — `--fix`, `--review`, or none
+- `SUB_AGENT_COUNT` — Number from `--agents N`, or 0 if not specified
 
 ---
 
 ## Step 1: Get Issue Details
 
 ```bash
-python "$REPO_ROOT/project-management/tools/linear.py" issue get CON-XXX --json
+# Use /linear-tool skill for Linear operations
 ```
 
 Parse the response to extract:
@@ -37,7 +43,7 @@ Parse the response to extract:
 If the issue title doesn't already have an agent name pattern `(<name>)`, prepend yours:
 
 ```bash
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --title "($AGENT_NAME) <original title>"
+# Use /linear-tool skill for Linear operations
 ```
 
 **Example:** Title `Implement feature X` becomes `(opus-1) Implement feature X`
@@ -59,7 +65,7 @@ python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --ti
 The Linear issue has a `Branch:` field with the suggested branch name:
 
 ```bash
-python "$REPO_ROOT/project-management/tools/linear.py" issue get CON-XXX
+# Use /linear-tool skill for Linear operations
 ```
 
 Look for the `Branch:` line in the output.
@@ -113,12 +119,10 @@ Unknown project: `<project-name>`. Add it to the project map.
 
 Navigate to the project folder, reading CLAUDE.md at each level of the path.
 
-Example for `foundry-core` (`src/packages/foundry/foundry-core/`):
+Example for a package (<CONFIG>Example package path</CONFIG>):
 1. Root `CLAUDE.md` (already read)
-2. Check `src/CLAUDE.md` (if exists)
-3. Check `src/packages/CLAUDE.md` (if exists)
-4. Check `src/packages/foundry/CLAUDE.md` (if exists)
-5. Check `src/packages/foundry/foundry-core/CLAUDE.md` (if exists)
+2. Check each intermediate `CLAUDE.md` along the path (if exists)
+3. Check the target package's `CLAUDE.md` (if exists)
 
 ---
 
@@ -135,8 +139,8 @@ Example for `foundry-core` (`src/packages/foundry/foundry-core/`):
 | Spec Drafted | Read `CORE/TASKS/WORKFLOW/SPEC_HARDENING_TESTS.md` |
 | Spec - Hardening Tests | **FAIL** — "Another agent is hardening the spec tests." |
 | Spec In Review | Read `CORE/TASKS/WORKFLOW/SPEC_REVIEW.md` |
-| Ready to Start | Read `CORE/TASKS/WORKFLOW/IMPLEMENT.md` |
-| Work Started | Read `CORE/TASKS/WORKFLOW/IMPLEMENT.md` |
+| Ready to Start | Read `CORE/TASKS/WORKFLOW/IMPLEMENT.md` (pass `SUB_AGENT_COUNT` if > 0) |
+| Work Started | Read `CORE/TASKS/WORKFLOW/IMPLEMENT.md` (pass `SUB_AGENT_COUNT` if > 0) |
 | In Review | Check labels and override (see below) |
 | Review Passed | Read `CORE/TASKS/WORKFLOW/TESTING.md` |
 | Testing | **FAIL** — "Another agent is running tests." |

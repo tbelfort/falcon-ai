@@ -9,7 +9,7 @@ Use this template for **breadth research** — exploring the landscape of possib
 ## Template: Single Library/Tool
 
 ```
-gemini -y -m gemini-3-flash-preview -p "Research the solution space for <USE_CASE>. Specifically:
+<CONFIG>Research tool command</CONFIG> "Research the solution space for <USE_CASE>. Specifically:
 
 1. **Tool options:** What are the main approaches/libraries for this? (e.g., import-linter vs AST vs grep)
 2. **Trade-offs:** What are the pros/cons of each approach?
@@ -25,7 +25,7 @@ I need to understand the landscape of options, not just one solution. Include to
 ## Template: Specific Library Deep-Dive
 
 ```
-gemini -y -m gemini-3-flash-preview -p "What are the common gotchas when using <LIBRARY> for <USE_CASE>? Specifically:
+<CONFIG>Research tool command</CONFIG> "What are the common gotchas when using <LIBRARY> for <USE_CASE>? Specifically:
 - What can go wrong in production?
 - Version-specific issues for Python 3.12.x?
 - Edge cases that aren't obvious?
@@ -39,7 +39,7 @@ Focus on things that could bite us, not basic usage or tutorials."
 ## Template: Approach Comparison
 
 ```
-gemini -y -m gemini-3-flash-preview -p "Compare these approaches for <TASK>:
+<CONFIG>Research tool command</CONFIG> "Compare these approaches for <TASK>:
 1. <APPROACH_1>
 2. <APPROACH_2>
 3. <APPROACH_3>

@@ -6,6 +6,27 @@
 
 ---
 
+## npm Dependencies
+
+> **Research Document:** [`ai_docs/phase-0-dependencies.md`](../../ai_docs/phase-0-dependencies.md)
+
+| Package | Version | Purpose | Key Notes |
+|---------|---------|---------|-----------|
+| commander | ^14.0.0 | CLI framework | Use `parseAsync()` for async handlers; requires Node.js v20+ |
+| better-sqlite3 | ^11.0.0 | SQLite database | Enable WAL mode + foreign_keys pragma; requires Node.js v22 LTS |
+| yaml | ^2.8.0 | Config file parsing | Validate parsed data with Zod; single-document only |
+| zod | ^4.3.0 | Schema validation | Use `safeParse()` for user input; requires TS 5.5+ |
+
+**Note:** The `uuid` package has been replaced with native `crypto.randomUUID()` (3x faster, zero dependencies).
+
+```typescript
+// Replace uuid imports with native crypto
+import { randomUUID } from 'crypto';
+const id = randomUUID();
+```
+
+---
+
 ## 1. Overview
 
 This phase establishes the CLI tool, database initialization, and workspace/project registration flows. It answers the critical question: **"How does the system know which workspace/project it's operating in?"**
@@ -25,6 +46,7 @@ Without Phase 0, all other phases fail because:
 - [ ] `src/cli/commands/workspace.ts` - Workspace management commands
 - [ ] `src/cli/commands/project.ts` - Project management commands
 - [ ] `src/cli/commands/status.ts` - `falcon status` command
+- [ ] `src/cli/commands/doctor.ts` - `falcon doctor` command
 - [ ] `src/config/loader.ts` - Configuration file loader
 - [ ] `src/config/scope-resolver.ts` - Runtime scope resolution
 - [ ] `src/storage/db.ts` - Database initialization (shared with Phase 1)
@@ -42,7 +64,7 @@ Without Phase 0, all other phases fail because:
 {
   "name": "falcon-ai",
   "version": "0.1.0",
-  "description": "Meta-learning pattern attribution for multi-agent development",
+  "description": "Pattern-based guardrail system for multi-agent development",
   "bin": {
     "falcon": "./dist/cli/index.js"
   },
@@ -117,7 +139,7 @@ const program = new Command();
 
 program
   .name('falcon')
-  .description('Meta-learning pattern attribution for multi-agent development')
+  .description('Pattern-based guardrail system for multi-agent development')
   .version('0.1.0');
 
 program.addCommand(initCommand);
@@ -139,9 +161,10 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { getDatabase } from '../../storage/db';
 import { canonicalizeGitUrl } from '../../config/url-utils';
+import { seedBaselines } from '../../storage/seed/baselines';
 
 interface InitOptions {
   workspace?: string;  // Existing workspace slug
@@ -227,7 +250,7 @@ export const initCommand = new Command('init')
       const defaultSlug = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
       workspaceSlug = defaultSlug;
       workspaceName = projectName;
-      workspaceId = uuidv4();
+      workspaceId = randomUUID();
 
       // Check slug uniqueness
       const existingWorkspace = db.prepare(
@@ -236,7 +259,7 @@ export const initCommand = new Command('init')
 
       if (existingWorkspace) {
         // Append random suffix
-        workspaceSlug = `${defaultSlug}-${uuidv4().slice(0, 4)}`;
+        workspaceSlug = `${defaultSlug}-${randomUUID().slice(0, 4)}`;
       }
 
       const now = new Date().toISOString();
@@ -245,11 +268,14 @@ export const initCommand = new Command('init')
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(workspaceId, workspaceName, workspaceSlug, '{}', 'active', now, now);
 
+      // Seed baseline principles for new workspace
+      const seededCount = seedBaselines(db, workspaceId);
       console.log(`Created workspace: ${workspaceName} (${workspaceSlug})`);
+      console.log(`Seeded ${seededCount} baseline principles.`);
     }
 
     // STEP 6: Create project
-    const projectId = uuidv4();
+    const projectId = randomUUID();
     const now = new Date().toISOString();
 
     db.prepare(`
@@ -337,8 +363,9 @@ function getRepoSubdir(gitRoot: string): string | null {
 ```typescript
 // File: src/cli/commands/workspace.ts
 import { Command } from 'commander';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { getDatabase } from '../../storage/db';
+import { seedBaselines } from '../../storage/seed/baselines';
 
 export const workspaceCommand = new Command('workspace')
   .description('Manage workspaces');
@@ -395,7 +422,7 @@ workspaceCommand
       process.exit(1);
     }
 
-    const id = uuidv4();
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     db.prepare(`
@@ -403,8 +430,12 @@ workspaceCommand
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, name, slug, '{}', 'active', now, now);
 
+    // Seed baseline principles for new workspace
+    const seededCount = seedBaselines(db, id);
+
     console.log(`Created workspace: ${name} (${slug})`);
     console.log(`ID: ${id}`);
+    console.log(`Seeded ${seededCount} baseline principles.`);
   });
 
 // falcon workspace archive <slug>
@@ -613,6 +644,203 @@ export const statusCommand = new Command('status')
       throw e;
     }
   });
+```
+
+### 4.6 `falcon doctor`
+
+Diagnostic command to verify Falcon installation and configuration.
+
+**Usage:**
+```bash
+falcon doctor
+```
+
+**Checks performed:**
+
+| Check | Description | Pass Criteria |
+|-------|-------------|---------------|
+| Database accessible | Can connect to `~/.falcon-ai/db/falcon.db` | File exists and readable |
+| Database writable | Can write to database | INSERT succeeds |
+| Config file valid | `.falcon/config.yaml` is valid YAML | Parses without error |
+| Scope resolvable | Can resolve workspaceId and projectId | Both IDs found |
+| Workspace exists | workspaceId maps to existing workspace | Row found in workspaces table |
+| Project exists | projectId maps to existing project | Row found in projects table |
+| Git remote detected | Can read git remote origin URL | `git remote get-url origin` succeeds |
+| Baselines seeded | Baseline principles exist for workspace | 11 baselines found |
+
+**Output format:**
+```
+Falcon Health Check
+===================
+
+✓ Database accessible     ~/.falcon-ai/db/falcon.db
+✓ Database writable       INSERT test succeeded
+✓ Config file valid       .falcon/config.yaml
+✓ Scope resolvable        workspace: abc123, project: def456
+✓ Workspace exists        "My Team" (active)
+✓ Project exists          "falcon-api" (active)
+✓ Git remote detected     git@github.com:org/repo.git
+✓ Baselines seeded        11/11 baseline principles
+
+All checks passed!
+```
+
+**Error output example:**
+```
+Falcon Health Check
+===================
+
+✓ Database accessible     ~/.falcon-ai/db/falcon.db
+✓ Database writable       INSERT test succeeded
+✗ Config file valid       .falcon/config.yaml not found
+✗ Scope resolvable        Run 'falcon init' to configure this project
+
+2 checks failed. Run 'falcon init' to fix configuration issues.
+```
+
+**Implementation:**
+
+```typescript
+interface DoctorCheck {
+  name: string;
+  check: () => Promise<{ passed: boolean; message: string }>;
+}
+
+async function runDoctor(): Promise<void> {
+  const checks: DoctorCheck[] = [
+    {
+      name: 'Database accessible',
+      check: async () => {
+        const dbPath = path.join(os.homedir(), '.falcon-ai', 'db', 'falcon.db');
+        if (fs.existsSync(dbPath)) {
+          return { passed: true, message: dbPath };
+        }
+        return { passed: false, message: 'Database not found. Run falcon init.' };
+      }
+    },
+    {
+      name: 'Database writable',
+      check: async () => {
+        try {
+          const db = getDatabase();
+          db.exec('CREATE TABLE IF NOT EXISTS _health_check (id INTEGER)');
+          db.exec('DROP TABLE IF EXISTS _health_check');
+          return { passed: true, message: 'INSERT test succeeded' };
+        } catch (e) {
+          return { passed: false, message: `Database write failed: ${e.message}` };
+        }
+      }
+    },
+    {
+      name: 'Config file valid',
+      check: async () => {
+        const configPath = findConfigFile();
+        if (!configPath) {
+          return { passed: false, message: '.falcon/config.yaml not found' };
+        }
+        try {
+          const config = parseConfig(configPath);
+          return { passed: true, message: configPath };
+        } catch (e) {
+          return { passed: false, message: `Invalid YAML: ${e.message}` };
+        }
+      }
+    },
+    {
+      name: 'Scope resolvable',
+      check: async () => {
+        try {
+          const scope = await resolveScope();
+          return {
+            passed: true,
+            message: `workspace: ${scope.workspaceId.slice(0, 8)}, project: ${scope.projectId.slice(0, 8)}`
+          };
+        } catch (e) {
+          return { passed: false, message: "Run 'falcon init' to configure this project" };
+        }
+      }
+    },
+    {
+      name: 'Workspace exists',
+      check: async () => {
+        try {
+          const scope = await resolveScope();
+          const workspace = workspaceRepo.findById(scope.workspaceId);
+          if (workspace) {
+            return { passed: true, message: `"${workspace.name}" (${workspace.status})` };
+          }
+          return { passed: false, message: 'Workspace not found in database' };
+        } catch {
+          return { passed: false, message: 'Could not check workspace' };
+        }
+      }
+    },
+    {
+      name: 'Project exists',
+      check: async () => {
+        try {
+          const scope = await resolveScope();
+          const project = projectRepo.findById({ workspaceId: scope.workspaceId, id: scope.projectId });
+          if (project) {
+            return { passed: true, message: `"${project.name}" (${project.status})` };
+          }
+          return { passed: false, message: 'Project not found in database' };
+        } catch {
+          return { passed: false, message: 'Could not check project' };
+        }
+      }
+    },
+    {
+      name: 'Git remote detected',
+      check: async () => {
+        try {
+          const url = execSync('git remote get-url origin', { encoding: 'utf-8' }).trim();
+          return { passed: true, message: url };
+        } catch {
+          return { passed: false, message: 'No git remote configured' };
+        }
+      }
+    },
+    {
+      name: 'Baselines seeded',
+      check: async () => {
+        try {
+          const scope = await resolveScope();
+          const baselines = principleRepo.findActive({
+            workspaceId: scope.workspaceId,
+            origin: 'baseline'
+          });
+          const count = baselines.length;
+          if (count >= 11) {
+            return { passed: true, message: `${count}/11 baseline principles` };
+          }
+          return { passed: false, message: `Only ${count}/11 baselines. Run falcon init --seed-baselines` };
+        } catch {
+          return { passed: false, message: 'Could not check baselines' };
+        }
+      }
+    }
+  ];
+
+  console.log('Falcon Health Check');
+  console.log('===================\n');
+
+  let failures = 0;
+  for (const check of checks) {
+    const result = await check.check();
+    const icon = result.passed ? '✓' : '✗';
+    console.log(`${icon} ${check.name.padEnd(22)} ${result.message}`);
+    if (!result.passed) failures++;
+  }
+
+  console.log();
+  if (failures === 0) {
+    console.log('All checks passed!');
+  } else {
+    console.log(`${failures} check(s) failed. Run 'falcon init' to fix configuration issues.`);
+    process.exit(1);
+  }
+}
 ```
 
 ---
@@ -853,14 +1081,15 @@ export function gitUrlsEqual(url1: string, url2: string): boolean {
 
 ## 6. Database Initialization
 
-Database initialization is shared with Phase 1, but Phase 0 ensures the database exists before any other operations.
+Database initialization creates **ALL** tables needed by the entire system. This ensures `falcon status` and other commands work immediately after `falcon init`, without waiting for Phase 1.
 
 ```typescript
-// File: src/storage/db.ts (partial - full implementation in Phase 1)
+// File: src/storage/db.ts
 import Database from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 
 const FALCON_DIR = path.join(os.homedir(), '.falcon-ai');
 const DB_DIR = path.join(FALCON_DIR, 'db');
@@ -878,6 +1107,8 @@ export function getDatabase(): Database.Database {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    db.pragma('synchronous = NORMAL');
+    db.pragma('cache_size = 20000');
 
     runMigrations(db);
   }
@@ -885,9 +1116,13 @@ export function getDatabase(): Database.Database {
 }
 
 function runMigrations(db: Database.Database): void {
-  // Creates all tables - see Phase 1 for full schema
-  // Workspaces and Projects tables MUST exist for Phase 0 commands to work
+  // Complete database schema for all phases
+  // Phase 0 creates ALL tables so commands like `falcon status` work immediately
   db.exec(`
+    -- ============================================
+    -- CORE TABLES (Phase 0)
+    -- ============================================
+
     CREATE TABLE IF NOT EXISTS workspaces (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -912,10 +1147,415 @@ function runMigrations(db: Database.Database): void {
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_identity
-      ON projects(repo_origin_url, repo_subdir);
+      ON projects(workspace_id, repo_origin_url, repo_subdir);
+    CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 
-    -- Additional tables from Phase 1...
+    -- ============================================
+    -- PATTERN TABLES (Phase 1 data, Phase 2 writes)
+    -- ============================================
+
+    CREATE TABLE IF NOT EXISTS pattern_definitions (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      pattern_key TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      pattern_content TEXT NOT NULL,
+      failure_mode TEXT NOT NULL CHECK (failure_mode IN ('incorrect', 'incomplete', 'missing_reference', 'ambiguous', 'conflict_unresolved', 'synthesis_drift')),
+      finding_category TEXT NOT NULL CHECK (finding_category IN ('security', 'correctness', 'testing', 'compliance', 'decisions')),
+      severity TEXT NOT NULL CHECK (severity IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')),
+      severity_max TEXT NOT NULL CHECK (severity_max IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')),
+      alternative TEXT NOT NULL,
+      consequence_class TEXT,
+      carrier_stage TEXT NOT NULL CHECK (carrier_stage IN ('context-pack', 'spec')),
+      primary_carrier_quote_type TEXT NOT NULL CHECK (primary_carrier_quote_type IN ('verbatim', 'paraphrase', 'inferred')),
+      technologies TEXT NOT NULL DEFAULT '[]',
+      task_types TEXT NOT NULL DEFAULT '[]',
+      touches TEXT NOT NULL DEFAULT '[]',
+      aligned_baseline_id TEXT REFERENCES derived_principles(id),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived', 'superseded')),
+      permanent INTEGER NOT NULL DEFAULT 0,
+      superseded_by TEXT REFERENCES pattern_definitions(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_patterns_scope_key
+      ON pattern_definitions(workspace_id, project_id, pattern_key);
+    CREATE INDEX IF NOT EXISTS idx_patterns_status ON pattern_definitions(status);
+    CREATE INDEX IF NOT EXISTS idx_patterns_carrier_stage ON pattern_definitions(carrier_stage);
+    CREATE INDEX IF NOT EXISTS idx_patterns_finding_category ON pattern_definitions(finding_category);
+    CREATE INDEX IF NOT EXISTS idx_patterns_workspace ON pattern_definitions(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_patterns_project ON pattern_definitions(project_id);
+
+    CREATE TABLE IF NOT EXISTS pattern_occurrences (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      pattern_id TEXT NOT NULL REFERENCES pattern_definitions(id),
+      finding_id TEXT NOT NULL,
+      issue_id TEXT NOT NULL,
+      pr_number INTEGER NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')),
+      evidence TEXT NOT NULL,
+      carrier_fingerprint TEXT NOT NULL,
+      origin_fingerprint TEXT,
+      provenance_chain TEXT NOT NULL DEFAULT '[]',
+      carrier_excerpt_hash TEXT NOT NULL,
+      origin_excerpt_hash TEXT,
+      was_injected INTEGER NOT NULL DEFAULT 0,
+      was_adhered_to INTEGER,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+      inactive_reason TEXT CHECK (inactive_reason IS NULL OR inactive_reason IN ('superseded_doc', 'pattern_archived', 'false_positive')),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_occurrences_pattern_id ON pattern_occurrences(pattern_id);
+    CREATE INDEX IF NOT EXISTS idx_occurrences_issue_id ON pattern_occurrences(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_occurrences_status ON pattern_occurrences(status);
+    CREATE INDEX IF NOT EXISTS idx_occurrences_workspace ON pattern_occurrences(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_occurrences_project ON pattern_occurrences(project_id);
+    CREATE INDEX IF NOT EXISTS idx_occurrences_created_at ON pattern_occurrences(created_at);
+
+    -- ============================================
+    -- PRINCIPLE TABLES (Phase 1 data, Phase 3 reads)
+    -- ============================================
+
+    CREATE TABLE IF NOT EXISTS derived_principles (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      principle TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      origin TEXT NOT NULL CHECK (origin IN ('baseline', 'derived')),
+      derived_from TEXT,
+      external_refs TEXT,
+      inject_into TEXT NOT NULL CHECK (inject_into IN ('context-pack', 'spec', 'both')),
+      touches TEXT NOT NULL DEFAULT '[]',
+      technologies TEXT,
+      task_types TEXT,
+      confidence REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived', 'superseded')),
+      permanent INTEGER NOT NULL DEFAULT 0,
+      superseded_by TEXT REFERENCES derived_principles(id),
+      promotion_key TEXT,
+      archived_reason TEXT,
+      archived_at TEXT,
+      archived_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_principles_status ON derived_principles(status);
+    CREATE INDEX IF NOT EXISTS idx_principles_origin ON derived_principles(origin);
+    CREATE INDEX IF NOT EXISTS idx_principles_workspace ON derived_principles(workspace_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_principles_promotion_key ON derived_principles(workspace_id, promotion_key) WHERE promotion_key IS NOT NULL;
+
+    -- ============================================
+    -- NONCOMPLIANCE & DOC UPDATE TABLES
+    -- ============================================
+
+    CREATE TABLE IF NOT EXISTS execution_noncompliance (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      finding_id TEXT NOT NULL,
+      issue_id TEXT NOT NULL,
+      pr_number INTEGER NOT NULL,
+      violated_guidance_stage TEXT NOT NULL CHECK (violated_guidance_stage IN ('context-pack', 'spec')),
+      violated_guidance_location TEXT NOT NULL,
+      violated_guidance_excerpt TEXT NOT NULL,
+      possible_causes TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_noncompliance_workspace ON execution_noncompliance(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_noncompliance_project ON execution_noncompliance(project_id);
+    CREATE INDEX IF NOT EXISTS idx_noncompliance_issue ON execution_noncompliance(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_noncompliance_created_at ON execution_noncompliance(created_at);
+
+    CREATE TABLE IF NOT EXISTS doc_update_requests (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      finding_id TEXT NOT NULL,
+      issue_id TEXT NOT NULL,
+      finding_category TEXT NOT NULL,
+      scout_type TEXT NOT NULL,
+      target_doc TEXT NOT NULL,
+      update_type TEXT NOT NULL CHECK (update_type IN ('add_decision', 'clarify_guidance', 'fix_error', 'add_constraint')),
+      decision_class TEXT,
+      description TEXT NOT NULL,
+      suggested_content TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'rejected')),
+      completed_at TEXT,
+      rejection_reason TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_doc_updates_status ON doc_update_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_doc_updates_workspace ON doc_update_requests(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_doc_updates_project ON doc_update_requests(project_id);
+
+    -- ============================================
+    -- INJECTION & TRACKING TABLES
+    -- ============================================
+
+    CREATE TABLE IF NOT EXISTS tagging_misses (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      finding_id TEXT NOT NULL,
+      pattern_id TEXT NOT NULL REFERENCES pattern_definitions(id),
+      actual_task_profile TEXT NOT NULL,
+      required_match TEXT NOT NULL,
+      missing_tags TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
+      resolution TEXT CHECK (resolution IS NULL OR resolution IN ('broadened_pattern', 'improved_extraction', 'false_positive')),
+      created_at TEXT NOT NULL,
+      resolved_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tagging_misses_status ON tagging_misses(status);
+    CREATE INDEX IF NOT EXISTS idx_tagging_misses_pattern ON tagging_misses(pattern_id);
+
+    CREATE TABLE IF NOT EXISTS injection_logs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      issue_id TEXT NOT NULL,
+      target TEXT NOT NULL CHECK (target IN ('context-pack', 'spec')),
+      injected_patterns TEXT NOT NULL DEFAULT '[]',
+      injected_principles TEXT NOT NULL DEFAULT '[]',
+      injected_alerts TEXT NOT NULL DEFAULT '[]',
+      task_profile TEXT NOT NULL,
+      injected_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_injection_logs_issue_id ON injection_logs(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_injection_logs_workspace ON injection_logs(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_injection_logs_project ON injection_logs(project_id);
+    CREATE INDEX IF NOT EXISTS idx_injection_logs_target ON injection_logs(target);
+
+    -- ============================================
+    -- PROVISIONAL ALERT & SALIENCE TABLES (v1.0)
+    -- ============================================
+
+    CREATE TABLE IF NOT EXISTS provisional_alerts (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      finding_id TEXT NOT NULL,
+      issue_id TEXT NOT NULL,
+      message TEXT NOT NULL,
+      touches TEXT NOT NULL DEFAULT '[]',
+      inject_into TEXT NOT NULL CHECK (inject_into IN ('context-pack', 'spec', 'both')),
+      expires_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'promoted')),
+      promoted_to_pattern_id TEXT REFERENCES pattern_definitions(id),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_provisional_alerts_status ON provisional_alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_provisional_alerts_expires_at ON provisional_alerts(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_provisional_alerts_workspace ON provisional_alerts(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_provisional_alerts_project ON provisional_alerts(project_id);
+
+    CREATE TABLE IF NOT EXISTS salience_issues (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      guidance_location_hash TEXT NOT NULL,
+      guidance_stage TEXT NOT NULL CHECK (guidance_stage IN ('context-pack', 'spec')),
+      guidance_location TEXT NOT NULL,
+      guidance_excerpt TEXT NOT NULL,
+      occurrence_count INTEGER NOT NULL DEFAULT 0,
+      window_days INTEGER NOT NULL DEFAULT 30,
+      noncompliance_ids TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
+      resolution TEXT CHECK (resolution IS NULL OR resolution IN ('reformatted', 'moved_earlier', 'false_positive')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      resolved_at TEXT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_salience_issues_hash ON salience_issues(workspace_id, project_id, guidance_location_hash);
+    CREATE INDEX IF NOT EXISTS idx_salience_issues_status ON salience_issues(status);
+
+    -- ============================================
+    -- KILL SWITCH TABLES (v1.0)
+    -- ============================================
+
+    CREATE TABLE IF NOT EXISTS kill_switch_status (
+      id TEXT PRIMARY KEY DEFAULT 'singleton',
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      state TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (state IN ('ACTIVE', 'INFERRED_PAUSED', 'FULLY_PAUSED')),
+      reason TEXT,
+      changed_by TEXT,
+      changed_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS attribution_outcomes (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      finding_id TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK (outcome IN ('pattern_created', 'pattern_updated', 'noncompliance', 'doc_update', 'provisional_alert', 'skipped_kill_switch', 'error')),
+      carrier_quote_type TEXT CHECK (carrier_quote_type IN ('verbatim', 'paraphrase', 'inferred')),
+      error_message TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_attribution_outcomes_workspace ON attribution_outcomes(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_attribution_outcomes_created_at ON attribution_outcomes(created_at);
+    CREATE INDEX IF NOT EXISTS idx_attribution_outcomes_outcome ON attribution_outcomes(outcome);
   `);
+}
+```
+
+---
+
+## 6.1 Baseline Seeding
+
+When a workspace is created, the 11 baseline principles (B01-B11) must be seeded. This ensures `falcon doctor` passes and the injection system has foundational guardrails available immediately.
+
+```typescript
+// File: src/storage/seed/baselines.ts
+import { randomUUID } from 'crypto';
+import type Database from 'better-sqlite3';
+
+interface BaselinePrinciple {
+  principle: string;
+  rationale: string;
+  touches: string[];
+  externalRefs?: string[];
+}
+
+const BASELINE_PRINCIPLES: BaselinePrinciple[] = [
+  {
+    principle: 'Always use parameterized queries for SQL. Never interpolate user input into query strings.',
+    rationale: 'Prevents SQL injection, the most common and dangerous database vulnerability.',
+    touches: ['database', 'user_input'],
+    externalRefs: ['CWE-89']
+  },
+  {
+    principle: 'Validate, sanitize, and bound all external input before processing. Reject unexpected types, formats, and sizes.',
+    rationale: 'Prevents injection attacks, type confusion, and DoS via malformed input.',
+    touches: ['user_input'],
+    externalRefs: ['CWE-20']
+  },
+  {
+    principle: 'Never log secrets, credentials, API keys, or PII. Redact or omit sensitive fields.',
+    rationale: 'Prevents credential leakage through log aggregation and monitoring systems.',
+    touches: ['logging', 'auth'],
+    externalRefs: ['CWE-532']
+  },
+  {
+    principle: 'Require explicit authorization checks before sensitive operations. Never rely on implicit permissions.',
+    rationale: 'Prevents privilege escalation and unauthorized access to protected resources.',
+    touches: ['auth', 'authz'],
+    externalRefs: ['CWE-862']
+  },
+  {
+    principle: 'Set timeouts on all network calls. No unbounded waits.',
+    rationale: 'Prevents resource exhaustion and cascading failures from slow/unresponsive services.',
+    touches: ['network']
+  },
+  {
+    principle: 'Implement retry with exponential backoff, jitter, and maximum attempt limits.',
+    rationale: 'Prevents retry storms and allows graceful degradation during outages.',
+    touches: ['network']
+  },
+  {
+    principle: 'Use idempotency keys for operations that cannot be safely retried.',
+    rationale: 'Prevents duplicate processing and data corruption during network retries.',
+    touches: ['network', 'database']
+  },
+  {
+    principle: 'Enforce size limits and rate limits on user-provided data and requests.',
+    rationale: 'Prevents DoS attacks and resource exhaustion from malicious or buggy clients.',
+    touches: ['user_input', 'api'],
+    externalRefs: ['CWE-400']
+  },
+  {
+    principle: 'Require migration plan with rollback strategy for all schema changes.',
+    rationale: 'Prevents data loss and enables recovery from failed deployments.',
+    touches: ['schema']
+  },
+  {
+    principle: 'Define error contract (status codes, error shapes, error codes) before implementation.',
+    rationale: 'Ensures consistent error handling across the system and clear client expectations.',
+    touches: ['api']
+  },
+  {
+    principle: "Use least-privilege credentials for DB/service access. Don't run migrations/ops with app runtime creds. Scope tokens tightly.",
+    rationale: 'Reduces blast radius of credential compromise and limits damage from bugs.',
+    touches: ['database', 'auth', 'config'],
+    externalRefs: ['CWE-250']
+  }
+];
+
+/**
+ * Seed baseline principles for a workspace.
+ * Idempotent: skips already-existing baselines.
+ * @returns Number of baselines created (0 if all already exist)
+ */
+export function seedBaselines(db: Database.Database, workspaceId: string): number {
+  const now = new Date().toISOString();
+  let seeded = 0;
+
+  const insertStmt = db.prepare(`
+    INSERT INTO derived_principles (
+      id, workspace_id, principle, rationale, origin, external_refs,
+      inject_into, touches, confidence, status, permanent, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const checkStmt = db.prepare(`
+    SELECT id FROM derived_principles
+    WHERE workspace_id = ? AND principle = ? AND origin = 'baseline'
+  `);
+
+  for (const baseline of BASELINE_PRINCIPLES) {
+    // Check if already exists
+    const existing = checkStmt.get(workspaceId, baseline.principle);
+    if (existing) continue;
+
+    insertStmt.run(
+      randomUUID(),
+      workspaceId,
+      baseline.principle,
+      baseline.rationale,
+      'baseline',
+      baseline.externalRefs ? JSON.stringify(baseline.externalRefs) : null,
+      'both',
+      JSON.stringify(baseline.touches),
+      0.9,  // High confidence for baselines
+      'active',
+      1,    // permanent = true
+      now,
+      now
+    );
+    seeded++;
+  }
+
+  return seeded;
+}
+
+/**
+ * Check if baselines are seeded for a workspace.
+ */
+export function checkBaselinesSeeded(db: Database.Database, workspaceId: string): { seeded: number; expected: number } {
+  const result = db.prepare(`
+    SELECT COUNT(*) as count FROM derived_principles
+    WHERE workspace_id = ? AND origin = 'baseline' AND status = 'active'
+  `).get(workspaceId) as { count: number };
+
+  return {
+    seeded: result.count,
+    expected: BASELINE_PRINCIPLES.length
+  };
 }
 ```
 

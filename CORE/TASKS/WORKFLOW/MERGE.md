@@ -23,7 +23,7 @@ If the human says to merge, assume the PR has passed all necessary reviews. Any 
 
 ```bash
 # Get issue details
-python project-management/tools/linear.py issue get CON-XXX --json
+# Use /linear-tool skill for Linear operations
 ```
 
 Verify:
@@ -176,7 +176,7 @@ grep -ri "future\|deferred\|out of scope\|phase 2\|later" packages/<package>/spe
    ```markdown
    ### CON-XXX - Brief description of future task
 
-   **Source:** `src/packages/<package>/specs/<spec-file>.md`
+   **Source:** `<CONFIG>Spec file locations</CONFIG>/<spec-file>.md`
    **Extracted:** YYYY-MM-DD
    **Status:** Pending
 
@@ -218,7 +218,7 @@ If merge fails, report to human with the error.
 Run the sync script to update all agent worktrees:
 
 ```bash
-"$REPO_ROOT/../sync-all-main"
+<CONFIG>Sync script path</CONFIG>
 ```
 
 This safely updates main for all agents:
@@ -232,16 +232,7 @@ This safely updates main for all agents:
 ## Step 7: Update Linear
 
 ```bash
-# Comment
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: PR merged and deployed.
-
-All agent worktrees synced with main."
-
-# Move to Done
-python project-management/tools/linear.py issue update CON-XXX --state "Done"
-
-# Remove labels
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
+# Use /linear-tool skill for Linear operations
 ```
 
 ---

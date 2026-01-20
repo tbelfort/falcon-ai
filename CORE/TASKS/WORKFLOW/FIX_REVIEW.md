@@ -49,13 +49,13 @@ Look for comments from the reviewer agent (prefixed with `**[Model Name] Agent .
 
 ```bash
 # Run all tests
-uv run pytest src/packages/ src/apps/ -v
+<CONFIG>Test command</CONFIG>
 
 # Run linting
-uv run ruff check .
+<CONFIG>Lint command</CONFIG>
 
 # Run type checking
-uv run mypy src/packages/
+<CONFIG>Type check command</CONFIG>
 ```
 
 **If tests fail:** Fix them before proceeding. Don't push broken code.
@@ -88,11 +88,7 @@ Ready for re-review.
 After pushing fixes, comment on Linear (summary only):
 
 ```bash
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] ${AGENT_NAME}: Review issues fixed.
-
-**Fix details:** See GitHub PR comments for specifics.
-
-**Next steps:** Run \`/checkout CON-XXX --review\` to re-review (or \`/checkout:spec-review CON-XXX\` for spec issues)."
+# Use /linear-tool skill for Linear operations
 ```
 
 **IMPORTANT:** Never duplicate fix details in Linear. GitHub is the source of truth.
@@ -114,14 +110,11 @@ git push
 1. **Keep status as "In Review"** — Don't change it
 2. **Remove the review failure label** — Signals fixes are done, ready for re-review
    ```bash
-   # Remove whichever label exists:
-   python project-management/tools/linear.py issue update CON-XXX --remove-label code-review-failed
-   python project-management/tools/linear.py issue update CON-XXX --remove-label spec-review-fail
+   # Use /linear-tool skill for Linear operations
    ```
 3. **Swap labels:** Remove `agent_working`, add `agent_ready`
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+   # Use /linear-tool skill for Linear operations
    ```
 4. Task is now ready for re-review
 

@@ -44,7 +44,7 @@ They cannot read any other files. If the Context Pack says "see file X" or "foll
 
 2. **Read the entire Context Pack**
    ```bash
-   python "$REPO_ROOT/project-management/tools/linear.py" document get <document-id>
+   # Use /linear-tool skill for Linear operations
    ```
    (Extract document ID from the URL's last segment)
 
@@ -83,21 +83,10 @@ The Context Pack has enough information for a spec agent to write a complete spe
 
 ```bash
 # Move to Ready for Spec
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --state "Ready for Spec"
+# Use /linear-tool skill for Linear operations
 
 # Comment with review summary
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Context Pack review complete — APPROVED.
-
-**Context Pack:** <URL>
-
-**Review summary:**
-- Quality checklist: PASSED
-- All required sections present and complete
-- Spec agent has sufficient context to proceed
-
-Ready for spec work.
-
-**Next steps:** Run \`/checkout CON-XXX\` to start spec work."
+# Use /linear-tool skill for Linear operations
 ```
 
 ### If Context Pack NEEDS IMPROVEMENT
@@ -107,22 +96,10 @@ The Context Pack is missing critical information or has gaps.
 ```bash
 # Stay in Context Pack In Review (don't change state)
 # Add the improvement label
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --add-label needs_improve_context_pack
+# Use /linear-tool skill for Linear operations
 
 # Comment with specific gaps
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Context Pack review complete — NEEDS IMPROVEMENT.
-
-**Context Pack:** <URL>
-
-**Gaps found:**
-1. <specific gap 1 — be concrete>
-2. <specific gap 2>
-3. <etc>
-
-**What the spec agent will need:**
-- <specific information that must be added>
-
-**Next steps:** Run \`/checkout CON-XXX\` to improve the context pack."
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -165,14 +142,7 @@ git checkout main
 If the context pack has fundamental problems requiring human decisions:
 
 ```bash
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --add-label human_input
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Context Pack review blocked.
-
-**Requires human decision:**
-- <question 1>
-- <question 2>
-
-Please resolve these questions, then run \`/checkout CON-XXX\` to continue."
+# Use /linear-tool skill for Linear operations
 ```
 
 Do NOT change state or add improvement label until human resolves the questions.

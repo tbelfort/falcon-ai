@@ -7,7 +7,7 @@ Instructions for handling tasks in **Spec In Review** state. This state handles 
 ## Step 1: Get Issue Details and Determine Action
 
 ```bash
-python project-management/tools/linear.py issue get CON-XXX --json
+# Use /linear-tool skill for Linear operations
 ```
 
 **Parse the comments (most recent first) to determine what to do:**
@@ -33,8 +33,7 @@ git fetch origin
 git checkout <branch-name>
 
 # Swap labels (remove agent_ready if present, add agent_working)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -69,7 +68,7 @@ This isn't punitive—it's about ensuring reviews add value. Thorough approvals 
 ## A1: Comment to Claim
 
 ```bash
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Starting spec review."
+# Use /linear-tool skill for Linear operations
 ```
 
 ## A2: Read and Review
@@ -188,7 +187,7 @@ Common misses:
 - [ ] Use `docs/systems/architecture/INDEX.md` to route to relevant subdocs
 - [ ] If the spec touches dependency boundaries: read `docs/systems/architecture/LAYERS.md`
 - [ ] If the spec touches artifact IO / receipts / manifests: read `docs/systems/architecture/ARTIFACTS.md`
-- [ ] Follows layering rules (Forge packs → foundry-core only)
+- [ ] Follows layering rules (<CONFIG>Import boundary rules summary</CONFIG>)
 - [ ] Matches existing patterns in the codebase
 - [ ] No over-engineering or unnecessary complexity
 
@@ -218,7 +217,7 @@ Common misses:
 
 Verify spec follows error handling patterns from `docs/systems/architecture/QUALITY-ATTRIBUTES.md#error-handling-requirements`:
 - Error types documented
-- Uses FoundryError taxonomy
+- Uses <CONFIG>Error base class</CONFIG> taxonomy
 - Error context included
 - No bare exceptions
 - Test coverage for error paths
@@ -287,7 +286,7 @@ Based on component type from spec Section 0, apply the relevant checks below. Se
 
 ---
 
-### A3.1: Protocol Design Verification (IF foundry-package)
+### A3.1: Protocol Design Verification (IF <CONFIG>Protocol component type</CONFIG>)
 
 Per `docs/systems/architecture/COMPONENT-TYPES.md`, verify:
 - Protocols use `@runtime_checkable` if isinstance checks needed
@@ -296,7 +295,7 @@ Per `docs/systems/architecture/COMPONENT-TYPES.md`, verify:
 
 ---
 
-### A3.2: Artifact Contract Verification (IF forge-stage)
+### A3.2: Artifact Contract Verification (IF <CONFIG>Artifact-producing component type</CONFIG>)
 
 Per `docs/systems/architecture/ARTIFACTS.md` and `docs/systems/architecture/COMPONENT-TYPES.md`, verify:
 - All inputs/outputs declared in StageSpec
@@ -339,6 +338,42 @@ Per `docs/systems/architecture/SECURITY.md#path-security-artifact-paths`, verify
 
 ---
 
+### Implementation Strategy Assessment
+
+As part of approval, assess whether implementation should use sub-agents for parallelization.
+
+#### Decision Criteria
+
+| Deliverable Pattern | Recommendation | Sub-agent Count |
+|---------------------|----------------|-----------------|
+| Tightly coupled components (shared state, conventions) | **Single agent** | 0 |
+| Sequential dependencies between components | **Single agent** | 0 |
+| 2-3 independent deliverables with clear boundaries | **Optional sub-agents** | 2 |
+| 4+ independent deliverables, large scope | **Sub-agents recommended** | 3-4 |
+
+#### What Makes Deliverables "Independent"?
+
+Deliverables are independent if ALL of these are true:
+- [ ] Each can be implemented without knowledge of the others' internals
+- [ ] Each has distinct files (no shared file modifications)
+- [ ] Each can be tested in isolation
+- [ ] No shared naming conventions beyond what's already in codebase
+
+**Examples:**
+- **Independent:** 5 CLI commands that each call existing APIs → sub-agents can help
+- **Coupled:** Schema + Repository + Service that share types → single agent better
+- **Mixed:** 3 API endpoints + their shared middleware → single agent (middleware couples them)
+
+#### Counting Sub-agents
+
+1. List the spec's major deliverables
+2. Group by natural boundaries (directory, module, feature)
+3. Count truly independent groups
+4. Cap at 4 (coordination overhead exceeds benefit beyond this)
+5. If count is 1 or components are coupled → recommend single agent
+
+---
+
 ### Review Evidence Requirements
 
 Your review comment must include evidence of cross-referencing. This proves you connected multiple parts of the spec rather than reading sections in isolation.
@@ -375,24 +410,12 @@ The "Review Quality Note" demonstrates you thought about the spec holistically, 
 
 1. **Comment with issues:**
    ```bash
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Spec review complete — changes requested.
-
-   **Issues found:**
-   1. [Specific issue]
-   2. [Specific issue]
-
-   **Suggestions:**
-   - [How to fix each issue]
-
-   **Status:** Spec In Review (awaiting fixes)
-
-   **Next steps:** Run \`/checkout CON-XXX\` to fix spec issues."
+   # Use /linear-tool skill for Linear operations
    ```
 
 2. **Swap labels:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+   # Use /linear-tool skill for Linear operations
    ```
 
 3. **Report to human:**
@@ -417,36 +440,17 @@ The "Review Quality Note" demonstrates you thought about the spec holistically, 
 
 1. **Comment with approval AND evidence:**
    ```bash
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Spec review complete — approved.
-
-   **Cross-Reference Checks:**
-   - [test/requirement] → [implementation]: [verified or finding]
-   (include at least one; more for complex specs)
-
-   **ai_doc Verification:**
-   - Libraries: [list, or 'none' if no external deps]
-   - Gotchas addressed: [N]/[total], or N/A
-
-   **Review Quality Note:**
-   [1-2 sentences on what gave you confidence in this spec — e.g., 'Third review cycle, all prior feedback addressed' or 'Straightforward pattern matching existing X implementation']
-
-   **Spec file:** <full path>
-
-   Moving to Ready to Start.
-
-   **Next steps:** Run \`/checkout CON-XXX\` to begin implementation."
+   # Use /linear-tool skill for Linear operations
    ```
 
 2. **Add has_spec label and move state:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --add-label has_spec
-   python project-management/tools/linear.py issue update CON-XXX --state "Ready to Start"
+   # Use /linear-tool skill for Linear operations
    ```
 
 3. **Swap labels:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+   # Use /linear-tool skill for Linear operations
    ```
 
 4. **Report to human:**
@@ -458,7 +462,19 @@ The "Review Quality Note" demonstrates you thought about the spec holistically, 
    **ai_docs:** <count> libraries verified
    **Status:** Ready to Start — ready for implementation
 
-   **Next steps:** Run `/checkout CON-XXX` to begin implementation.
+   **Implementation Strategy:**
+   - Recommendation: <Single agent | Sub-agents>
+   - Sub-agent count: <0 | 2 | 3 | 4>
+   - Reasoning: <1 sentence explaining why>
+
+   **Deliverable Groups (if sub-agents recommended):**
+   1. <Group name>: <files/scope>
+   2. <Group name>: <files/scope>
+   ...
+
+   **Next steps:**
+   - Single agent: Run `/checkout CON-XXX` to begin implementation.
+   - Sub-agents: Run `/checkout CON-XXX --agents <count>` to begin implementation.
    ```
 
 5. **Checkout main:**
@@ -475,7 +491,7 @@ Use this path when the latest comment shows issues that need fixing.
 ## B1: Comment to Claim
 
 ```bash
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Fixing spec review issues."
+# Use /linear-tool skill for Linear operations
 ```
 
 ## B2: Read the Issues
@@ -507,17 +523,17 @@ git push
 **Linear is the source of truth.** Update the existing documents (don't create new versions).
 
 1. **Find the document ID** from the `**Spec Doc:**` URL in the Linear comments:
-   - Example URL: `https://linear.app/content-foundry/document/con-123-spec-title-b61c234e4b40`
+   - Example URL: `https://linear.app/<CONFIG>Linear workspace</CONFIG>/document/con-123-spec-title-b61c234e4b40`
    - The document ID is the last segment: `b61c234e4b40`
 
 2. **Update the spec document:**
    ```bash
-   python project-management/tools/linear.py document update <document-id> --content-file <path-to-spec.md>
+   # Use /linear-tool skill for Linear operations
    ```
 
 3. **If ai_docs were also updated**, find their document IDs and update them too:
    ```bash
-   python project-management/tools/linear.py document update <ai-doc-id> --content-file <path-to-ai-doc.md>
+   # Use /linear-tool skill for Linear operations
    ```
 
 The document URLs stay the same — no need to update references.
@@ -525,24 +541,13 @@ The document URLs stay the same — no need to update references.
 ## B6: Comment Ready for Re-Review
 
 ```bash
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Spec fixes complete — ready for re-review.
-
-**Fixes applied:**
-1. [What was fixed for issue 1]
-2. [What was fixed for issue 2]
-
-**Spec Doc:** Updated in place (same URL as before)
-
-**Status:** Spec In Review (ready for re-review)
-
-**Next steps:** Run \`/checkout CON-XXX --review\` to re-review the spec."
+# Use /linear-tool skill for Linear operations
 ```
 
 ## B7: Swap Labels
 
 ```bash
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+# Use /linear-tool skill for Linear operations
 ```
 
 ## B8: Report to Human

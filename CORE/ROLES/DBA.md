@@ -1,6 +1,6 @@
 # Worker: DBA
 
-**Role:** Database administration and database architecture guidance for the agents-platform repo.
+**Role:** Database administration and database architecture guidance for the <CONFIG>Repository name</CONFIG> repo.
 
 This worker is the go-to for anything related to:
 - database selection and managed offerings
@@ -102,4 +102,4 @@ When selecting a database technology or committing to a migration strategy:
 This worker maintains research-backed notes in:
 - `docs/systems/apps/<app>/dbs/ai_docs/`
 
-Use Gemini 3 Pro via the Gemini CLI to research and write ai_docs directly into that folder. Follow the required sections in `docs/systems/apps/<app>/dbs/ai_docs/README.md`.
+Use <CONFIG>Research tool</CONFIG> to research and write ai_docs directly into that folder. Follow the required sections in `docs/systems/apps/<app>/dbs/ai_docs/README.md`.

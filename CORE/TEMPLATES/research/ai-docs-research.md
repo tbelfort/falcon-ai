@@ -9,7 +9,7 @@ Opus owns ai_docs. Gemini is the research assistant that gathers information. Op
 ## Template: Initial Research
 
 ```
-gemini -y -m gemini-3-flash-preview -p "Research <LIBRARY> for <USE_CASE>.
+<CONFIG>Research tool command</CONFIG> "Research <LIBRARY> for <USE_CASE>.
 
 ## Context
 **Task:** CON-XXX - <ISSUE_TITLE>
@@ -55,7 +55,7 @@ I will review and decide what to include in the ai_doc."
 Use when Opus needs more information after initial research:
 
 ```
-gemini -y -m gemini-3-flash-preview -p "Follow-up research for <LIBRARY>:
+<CONFIG>Research tool command</CONFIG> "Follow-up research for <LIBRARY>:
 
 ## Previous Research Gaps
 The initial research was missing or unclear on:
@@ -81,7 +81,7 @@ Return additional research content. DO NOT create files."
 Use when Opus needs to verify version compatibility:
 
 ```
-gemini -y -m gemini-3-flash-preview -p "Verify version compatibility for <LIBRARY>:
+<CONFIG>Research tool command</CONFIG> "Verify version compatibility for <LIBRARY>:
 
 **Our constraint:** <VERSION_CONSTRAINT> (from pyproject.toml)
 **Python version:** 3.12.x

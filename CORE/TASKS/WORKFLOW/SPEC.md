@@ -102,34 +102,17 @@ If the Context Pack is missing critical information needed to write the spec:
 
 2. **Add the improvement label:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --add-label needs_improve_context_pack
+   # Use /linear-tool skill for Linear operations
    ```
 
 3. **Comment with specific gaps** (be detailed):
    ```bash
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Context Pack needs improvement before spec work can proceed.
-
-   **Missing or insufficient information:**
-   1. <specific gap 1 - e.g., 'No architecture constraints cited for artifact IO'>
-   2. <specific gap 2 - e.g., 'Acceptance criteria are vague - need testable conditions'>
-   3. <specific gap 3 - e.g., 'Missing edge cases for timeout scenarios'>
-
-   **What I need to write the spec:**
-   - <specific request 1>
-   - <specific request 2>
-
-   **Recommended sections to expand:**
-   - Section 3 (Architecture Constraints): Add citations for <specific topic>
-   - Section 7 (Acceptance Criteria): Make <criterion> testable
-   - Section 8 (Edge Cases): Add <scenario>
-
-   Waiting for Context Pack improvement."
+   # Use /linear-tool skill for Linear operations
    ```
 
 4. **Swap labels and stop:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+   # Use /linear-tool skill for Linear operations
    ```
 
 5. **Checkout main and stop:**
@@ -171,7 +154,7 @@ If the Context Pack passes the quality checklist, proceed to Step 0.75.
 
 ```bash
 # Get issue details (includes branchName from Linear)
-python project-management/tools/linear.py issue get CON-XXX
+# Use /linear-tool skill for Linear operations
 
 # Create branch using Linear's branch name (from "Branch:" field above)
 git checkout main && git pull
@@ -185,15 +168,7 @@ git checkout -b <branchName-from-linear>
 ## Step 2: Claim the Task
 
 ```bash
-# Update status
-python project-management/tools/linear.py issue update CON-XXX --state "Spec In Progress"
-
-# Swap labels (remove agent_ready if present, add agent_working)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
-
-# Comment to claim
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Starting spec work. Branch: <branchName-from-linear>"
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -247,18 +222,7 @@ Use the template at `CORE/TEMPLATES/research/ai-docs-research.md`.
 **Important:** Gemini returns research TO YOU. It does NOT create files.
 
 ```bash
-gemini -y -m gemini-3-flash-preview -p "Research <LIBRARY> for <USE_CASE>.
-
-Context: <WHAT_WE_ARE_BUILDING>
-Constraints: <ARCHITECTURE_CONSTRAINTS>
-
-Return:
-1. Recommended version for Python 3.12.x
-2. API patterns for our use case (with code examples)
-3. Gotchas and edge cases
-4. Known issues with <OTHER_LIBRARIES_WE_USE>
-
-DO NOT create files. Return the full research content for me to review."
+<CONFIG>Research tool command</CONFIG>
 ```
 
 #### Step B: Evaluate Research (Extended Thinking)
@@ -285,17 +249,7 @@ DO NOT create files. Return the full research content for me to review."
 If gaps exist, ask Gemini for more:
 
 ```bash
-gemini -y -m gemini-3-flash-preview -p "Follow-up research for <LIBRARY>:
-
-The previous research was missing:
-1. <GAP_1>
-2. <GAP_2>
-
-Specifically, I need:
-- <SPECIFIC_QUESTION_1>
-- <SPECIFIC_QUESTION_2>
-
-Return additional research content."
+<CONFIG>Research tool command</CONFIG>
 ```
 
 **Repeat Steps B-C until satisfied.** You are the quality gate.
@@ -368,9 +322,7 @@ mkdir -p <PACKAGE>/ai_docs/
 ### Location
 
 Place specs in the `specs/` folder of the package being modified:
-- `src/packages/foundry/foundry-core/specs/`
-- `src/packages/forge/forge-web/specs/`
-- `src/apps/intent-atlas/specs/`
+<CONFIG>Spec file locations</CONFIG>
 
 ### Spec Content
 
@@ -423,8 +375,8 @@ Your Context Pack contains all the rules and constraints you need. Use it to wri
 
 **Conditional sections (based on component type from Context Pack):**
 - Model Immutability (if Pydantic frozen models)
-- Artifact Contract (if forge-stage)
-- Async Behavior (if worker/engine/weaver)
+- Artifact Contract (if artifact-producing component)
+- Async Behavior (if async component)
 - Path Security (if handling paths)
 - Component Specification (if ux)
 
@@ -452,23 +404,15 @@ git push -u origin <branch-name>
 ### Upload the Spec
 
 ```bash
-# Upload spec to Linear (associate with the project, not the issue)
-python project-management/tools/linear.py document create "CON-XXX Spec: <short title>" \
-  --content-file <path-to-spec.md> \
-  --project <project-name>
+# Use /linear-tool skill for Linear operations
 ```
 
-This returns a URL like `https://linear.app/skyla/document/...` — save it for the comment.
+This returns a URL like `https://linear.app/<CONFIG>Linear workspace</CONFIG>/document/...` — save it for the comment.
 
 **Important:** If you need to update an existing spec, use `document update`:
 
 ```bash
-# Get the document ID from the existing Linear URL (the ID is the last part of the URL)
-# Example: https://linear.app/content-foundry/document/con-123-spec-title-b61c234e4b40
-# The ID is: b61c234e4b40
-
-# Update the document with new content
-python project-management/tools/linear.py document update <document-id> --content-file <path-to-spec.md>
+# Use /linear-tool skill for Linear operations
 ```
 
 ### Upload ai_docs
@@ -476,9 +420,7 @@ python project-management/tools/linear.py document update <document-id> --conten
 For each ai_docs file created:
 
 ```bash
-python project-management/tools/linear.py document create "ai_docs: <filename>" \
-  --content-file <path-to-ai-doc.md> \
-  --project <project-name>
+# Use /linear-tool skill for Linear operations
 ```
 
 Save all URLs for the comment.
@@ -488,27 +430,7 @@ Save all URLs for the comment.
 ## Step 7: Update Linear
 
 ```bash
-# Move to Spec Drafted
-python project-management/tools/linear.py issue update CON-XXX --state "Spec Drafted"
-
-# CRITICAL: Swap labels (you started with agent_working, end with agent_ready)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
-
-# Comment (REQUIRED format) — include Linear doc URLs
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Spec complete.
-
-**Spec:** <full path to spec, e.g., src/packages/foundry/foundry-core/specs/artifact-store.md>
-**Spec Doc:** <Linear document URL>
-**Branch:** <branch-name>
-
-**ai_docs created:**
-- <ai_docs/file1.md> — <Linear document URL>
-- <ai_docs/file2.md> — <Linear document URL>
-
-**Summary:** <what the spec covers>
-
-**Next steps:** Run \`/checkout CON-XXX\` to start spec hardening tests."
+# Use /linear-tool skill for Linear operations
 ```
 
 **REQUIRED:** The comment MUST include:

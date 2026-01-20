@@ -1,4 +1,4 @@
-# Meta-Learning Pattern Attribution System Specification v1.0
+# Pattern-Based Guardrail System Specification v1.0
 
 **Status:** Final Draft
 **Last Updated:** 2026-01-19
@@ -48,6 +48,9 @@
 | Observability lacked scope context | Added required log fields | 5.5 |
 | Offline/DB-busy mode undefined | Added deterministic fallback policy | 1.10 |
 | Scope invariants not documented | Added Scope Invariants subsection | 1.8 |
+| Spec title claimed "meta-learning" without validation | Renamed to "Pattern-Based Guardrail System"; clarified correlation vs causation | Title, 1.1 |
+| Causal language implied proven attribution | Changed "caused" → "correlated with"; added epistemic disclaimer | 1.1, 2.2 |
+| No mechanism to stop pattern creation when attribution noise too high | Added kill switch with health metrics and thresholds | 11 |
 
 ---
 
@@ -55,7 +58,7 @@
 
 ### 1.1 Purpose
 
-A feedback loop for a multi-agent software development system. When PR reviews find bugs, we trace them back to the guidance that caused them, then inject warnings into future agent runs.
+A feedback loop for a multi-agent software development system. When PR reviews find bugs, we trace them back to guidance correlated with those bugs, then inject warnings into future agent runs. Note: correlation does not imply causation—this system accumulates guardrails empirically, not through proven causal attribution.
 
 **Goals:**
 - Improve quality: fewer security issues, bugs, and compliance failures
@@ -115,7 +118,7 @@ SCOPING:
 5. **Token-conscious injection** — Cap warnings to avoid fatigue
 6. **Security bias** — Security patterns get priority in injection
 7. **Pattern content immutability** — `patternContent` is never mutated; supersede instead
-8. **Invisible infrastructure** — Pattern attribution lives in the orchestrator, not task files. TASKS/*.md files remain clean and unaware of meta-learning. This allows task optimization without breaking the feedback loop.
+8. **Invisible infrastructure** — Pattern attribution lives in the orchestrator, not task files. TASKS/*.md files remain clean and unaware of the guardrail system. This allows task optimization without breaking the feedback loop.
 
 ### 1.4 Key Insight: Evidence Features + Deterministic Resolver
 
@@ -608,7 +611,7 @@ Structured output from Attribution Agent. Used by deterministic resolver.
 interface EvidenceBundle {
   // Carrier identification
   carrierStage: 'context-pack' | 'spec';
-  carrierQuote: string;                // The actual text that caused the problem
+  carrierQuote: string;                // The actual text correlated with the problem
   carrierQuoteType: 'verbatim' | 'paraphrase' | 'inferred';
   carrierLocation: string;             // Section reference within carrier
 
@@ -1624,6 +1627,9 @@ interface InjectionLogEvent {
 
   // If skipped, why?
   skipReason?: 'db_busy' | 'project_archived' | 'no_matching_warnings';
+
+  // Task context (for debugging "why didn't my warning show up?")
+  taskProfile: TaskProfile;
 }
 ```
 
@@ -1644,6 +1650,12 @@ interface AttributionLogEvent {
   outcome: 'pattern_created' | 'pattern_updated' | 'noncompliance' | 'doc_update' | 'provisional_alert';
   patternKey?: string;
   patternId?: string;
+
+  // Attribution details (for health metrics)
+  carrierQuoteType?: 'verbatim' | 'paraphrase' | 'inferred';
+  failureMode?: FailureMode;
+  severity?: Severity;
+  carrierStage?: 'context-pack' | 'spec';
 
   // If failed, why?
   failureReason?: string;
@@ -1765,6 +1777,24 @@ FUNCTION checkForPromotion(pattern: PatternDefinition):
       pattern.carrierStage + "|" +
       pattern.findingCategory
     )
+
+    // Check for recent archival of same promotionKey (90-day re-promotion block)
+    recentlyArchived = DerivedPrinciple.findOne({
+      workspaceId: pattern.scope.workspaceId,
+      promotionKey: promotionKey,
+      status: 'archived',
+      archivedAt: { $gte: now() - 90 days }
+    })
+
+    IF recentlyArchived:
+      LOG {
+        type: 'promotion_blocked_recent_archival',
+        workspaceId: pattern.scope.workspaceId,
+        promotionKey,
+        archivedAt: recentlyArchived.archivedAt,
+        reason: 'Re-promotion blocked: same patternKey was archived within 90 days'
+      }
+      RETURN  // Block re-promotion to prevent thrashing
 
     // Collect all matching pattern IDs for derivedFrom
     matchingPatterns = PatternDefinition.find({
@@ -2044,7 +2074,7 @@ Periodically review TaggingMiss records:
 
 ### 9.1 Required Metadata Output
 
-The Context Pack agent MUST output structured metadata for the meta-learning system:
+The Context Pack agent MUST output structured metadata for the guardrail system:
 
 ```typescript
 interface ContextPackMetadata {
@@ -2181,7 +2211,7 @@ This prevents the most expensive tagging misses where obvious touches are not ta
 - [x] SalienceIssue entity for repeated noncompliance tracking
 - [x] Evidence features + deterministic failureMode resolver with carrierInstructionKind
 - [x] 11 baseline principles with `touches` filtering (including B11: Least Privilege)
-- [x] Tiered injection (2 baseline + 4 learned, cap 6, security priority)
+- [x] Tiered injection (1 baseline + 1 derived + 4 learned, cap 6, security priority)
 - [x] Conflict precedence order (security > privacy > backcompat > correctness)
 - [x] Injection/adherence tracking
 - [x] Filter miss detection
@@ -2189,6 +2219,7 @@ This prevents the most expensive tagging misses where obvious touches are not ta
 - [x] Context Pack metadata requirements with validation
 - [x] Non-citable meta-warning rule
 - [x] Deterministic tie-breaking for all selections
+- [x] Attribution health monitoring with kill switch (pause pattern creation when noise too high)
 
 ### 10.2 Deferred to v2
 
@@ -2201,6 +2232,167 @@ This prevents the most expensive tagging misses where obvious touches are not ta
 - [ ] A/B testing for injection strategies
 - [ ] Batched attribution (multiple findings per agent call)
 - [ ] Automatic ExecutionNoncompliance escalation (v1 is record-only)
+
+---
+
+## 11. Attribution Health Monitoring and Kill Switch
+
+### 11.1 Purpose
+
+This system operates on correlation, not proven causation. If attribution noise is too high, the system may:
+1. **Displace useful tokens** — Injecting low-value warnings crowds out legitimate context
+2. **Actively misdirect** — False attributions may introduce harmful guidance
+
+The kill switch mechanism monitors attribution health and halts pattern creation when confidence drops below acceptable thresholds.
+
+### 11.2 Health Metrics
+
+```typescript
+interface AttributionHealthMetrics {
+  // Rolling window metrics (last 30 days, per project)
+  totalAttributions: number;           // Total pattern attributions attempted
+  verbatimAttributions: number;        // carrierQuoteType = 'verbatim'
+  paraphraseAttributions: number;      // carrierQuoteType = 'paraphrase'
+  inferredAttributions: number;        // carrierQuoteType = 'inferred'
+
+  // Outcome tracking (requires PR review after injection)
+  injectionsWithoutRecurrence: number; // Injected warning, same category not found again
+  injectionsWithRecurrence: number;    // Injected warning, same category still found
+
+  // Computed health scores
+  attributionPrecisionScore: number;   // verbatim / total (higher = better)
+  inferredRatio: number;               // inferred / total (lower = better)
+  observedImprovementRate: number;     // (without recurrence) / (total injections)
+}
+```
+
+### 11.3 Health Thresholds
+
+| Metric | Healthy | Warning | Critical | Action at Critical |
+|--------|---------|---------|----------|-------------------|
+| `attributionPrecisionScore` | ≥ 0.60 | 0.40–0.59 | < 0.40 | Pause pattern creation |
+| `inferredRatio` | ≤ 0.25 | 0.26–0.40 | > 0.40 | Pause inferred patterns only |
+| `observedImprovementRate` | ≥ 0.40 | 0.20–0.39 | < 0.20 | Pause all pattern creation |
+
+**Note:** These thresholds are initial estimates and SHOULD be calibrated after the validation test produces data.
+
+### 11.4 Kill Switch States
+
+```typescript
+enum PatternCreationState {
+  ACTIVE = 'active',           // Normal operation: all patterns created
+  INFERRED_PAUSED = 'inferred_paused',  // Only verbatim/paraphrase patterns created
+  FULLY_PAUSED = 'fully_paused'         // No new patterns created; injection continues for existing
+}
+
+interface KillSwitchStatus {
+  state: PatternCreationState;
+  reason: string | null;           // Why we entered this state
+  enteredAt: Date | null;          // When we entered this state
+  metrics: AttributionHealthMetrics;
+  autoResumeAt: Date | null;       // Scheduled re-evaluation time
+}
+```
+
+### 11.5 State Transitions
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                          ACTIVE                                     │
+│  (Normal: Create all pattern types)                                 │
+└────────────────────────────────────────────────────────────────────┘
+         │                                        │
+         │ inferredRatio > 0.40                   │ attributionPrecisionScore < 0.40
+         │ OR                                     │ OR
+         │ observedImprovementRate < 0.20         │ (manual trigger)
+         ▼                                        ▼
+┌─────────────────────┐                  ┌─────────────────────┐
+│  INFERRED_PAUSED    │                  │   FULLY_PAUSED      │
+│  (Verbatim only)    │ ─────────────────│   (No new patterns) │
+└─────────────────────┘   worsening      └─────────────────────┘
+         │                                        │
+         │ metrics recover                        │ metrics recover
+         │ AND 7-day cooldown                     │ AND 14-day cooldown
+         │                                        │
+         └────────────────────────────────────────┘
+                           │
+                           ▼
+                       ACTIVE
+```
+
+### 11.6 Behavior in Each State
+
+| State | Pattern Creation | Injection | ProvisionalAlert | Attribution Agent |
+|-------|------------------|-----------|------------------|-------------------|
+| `ACTIVE` | All types | Yes | Yes | Full analysis |
+| `INFERRED_PAUSED` | Verbatim/Paraphrase only | Yes | No | Skip inferred findings |
+| `FULLY_PAUSED` | None | Yes (existing only) | No | Log-only mode |
+
+### 11.7 API
+
+```typescript
+interface KillSwitchAPI {
+  // Query
+  getStatus(scope: Scope): KillSwitchStatus;
+  getHealthMetrics(scope: Scope): AttributionHealthMetrics;
+
+  // Manual controls (for human operator)
+  pausePatternCreation(scope: Scope, reason: string): void;
+  resumePatternCreation(scope: Scope): void;
+
+  // Called by orchestrator after each attribution
+  recordAttributionOutcome(scope: Scope, outcome: AttributionOutcome): void;
+  evaluateHealth(scope: Scope): void;  // Check if state should change
+}
+
+interface AttributionOutcome {
+  issueKey: string;
+  carrierQuoteType: 'verbatim' | 'paraphrase' | 'inferred';
+  patternCreated: boolean;
+  injectionOccurred: boolean;
+  recurrenceObserved: boolean | null;  // null if not yet known
+}
+```
+
+### 11.8 Observability
+
+When kill switch triggers, log:
+
+```json
+{
+  "event": "kill_switch_triggered",
+  "workspace_id": "ws_123",
+  "project_id": "proj_456",
+  "previous_state": "active",
+  "new_state": "fully_paused",
+  "reason": "attributionPrecisionScore dropped to 0.35",
+  "metrics": {
+    "totalAttributions": 47,
+    "verbatimAttributions": 12,
+    "inferredAttributions": 23,
+    "attributionPrecisionScore": 0.35
+  },
+  "auto_resume_at": "2026-02-02T00:00:00Z"
+}
+```
+
+### 11.9 Recovery Protocol
+
+1. **Auto-recovery** — System checks health weekly. If metrics recover and cooldown period passed, auto-resume to ACTIVE
+2. **Manual review** — When FULLY_PAUSED, flag for human review via observability logs
+3. **Root cause** — Before resuming, investigate why precision dropped:
+   - Are baseline principles too broad?
+   - Is taskProfile extraction failing?
+   - Are findings genuinely not attributable (novel issues)?
+
+### 11.10 Decision Rationale
+
+| Decision | Rationale |
+|----------|-----------|
+| Pause creation, not injection | Existing patterns have been vetted through occurrence counts; pausing creation prevents new noise |
+| observedImprovementRate threshold | If injections don't correlate with improvement, the system isn't helping |
+| 7/14 day cooldowns | Prevents oscillation; gives time for meaningful data accumulation |
+| Project-scoped, not global | One noisy project shouldn't kill the entire system |
 
 ---
 
@@ -2324,6 +2516,8 @@ This prevents the most expensive tagging misses where obvious touches are not ta
 | **Salience Issue** | Tracking for guidance repeatedly ignored (formatting/prominence problem) |
 | **Decision Class** | Category of undocumented decisions for recurrence counting |
 | **Carrier Instruction Kind** | Classification of how carrier guidance relates to the finding |
+| **Kill Switch** | Mechanism to pause pattern creation when attribution health metrics fall below thresholds |
+| **Attribution Health** | Metrics measuring pattern attribution quality (precision score, inferred ratio, improvement rate) |
 
 ---
 
@@ -2335,7 +2529,7 @@ This prevents the most expensive tagging misses where obvious touches are not ta
 | Separate Pattern from ExecutionNoncompliance | Prevents polluting pattern store with "agent ignored guidance" cases | 2026-01-18 |
 | Keep PatternOccurrence separate from PatternDefinition | Enables clean invalidation, per-occurrence evidence, injection tracking | 2026-01-18 |
 | Use `touches` for filtering instead of strict technology tags | More robust matching when technology tags are incomplete | 2026-01-18 |
-| Cap injection at 6 (2 baseline + 4 learned) | Balance between coverage and warning fatigue | 2026-01-18 |
+| Cap injection at 6 (1 baseline + 1 derived + 4 learned) | Balance between coverage and warning fatigue; derived principles now have guaranteed slot | 2026-01-19 |
 | Security patterns get priority in injection selection | Security issues are disproportionately costly | 2026-01-18 |
 | Decisions findings primarily create DocUpdateRequests, not Patterns | Aligns with Decisions Judge principle; prevents tautological patterns | 2026-01-18 |
 | Severity inherited from original finding | Pattern severity reflects the real-world impact observed | 2026-01-18 |
@@ -2357,3 +2551,8 @@ This prevents the most expensive tagging misses where obvious touches are not ta
 | Branch onDocumentChange by fingerprint.kind | Fixes detection for non-git fingerprints | 2026-01-18 |
 | Store excerptHash on occurrences | Enables section-level change detection | 2026-01-18 |
 | Use C+A attribution strategy | Precompute doc-level features + per-finding attribution for correctness | 2026-01-18 |
+| Rename from "Meta-Learning" to "Pattern-Based Guardrail" | System is policy accumulation, not learning; avoids overstating epistemic claims | 2026-01-19 |
+| Replace "caused" with "correlated with" | Attribution is empirical correlation, not proven causation; intellectual honesty | 2026-01-19 |
+| Add kill switch mechanism | If attribution noise is high, system may displace useful tokens or misdirect; need safety valve | 2026-01-19 |
+| Pause creation not injection when kill switch triggers | Existing patterns vetted by occurrence counts; pausing injection would lose known-good guidance | 2026-01-19 |
+| Project-scoped kill switch | One noisy project shouldn't disable guardrails for entire workspace | 2026-01-19 |

@@ -7,3 +7,9 @@
 
 # direnv
 .envrc
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/

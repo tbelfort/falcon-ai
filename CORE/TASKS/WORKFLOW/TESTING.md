@@ -6,20 +6,20 @@ Instructions for running tests and performing comprehensive testing. Read after 
 
 ## CRITICAL: Agent Restriction
 
-**ONLY `test-1` or `test-2` agents are authorized to run tests.**
+**Only authorized test agents (<CONFIG>Test agent names</CONFIG>) can run tests.**
 
 Check your agent name:
 ```bash
 echo $AGENT_NAME
 ```
 
-**If your agent name is NOT `test-1` or `test-2`:**
+**If your agent name is NOT in the authorized list:**
 
 ```
-I am not a testing agent. Only test-1 or test-2 agents are authorized to run tests.
+I am not a testing agent. Only authorized test agents are permitted to run tests.
 
 **Your agent name:** $AGENT_NAME
-**Required agent:** test-1 or test-2
+**Required agent:** <CONFIG>Test agent names</CONFIG>
 
 Please assign this task to a test agent.
 ```
@@ -33,9 +33,9 @@ Then **STOP** — do not proceed with testing.
 **CI handles the baseline.** GitHub Actions runs the full test suite, linting, and type checking on every PR. Your job as a test agent is to go **beyond CI** with targeted and manual testing.
 
 ### What CI Does (You Don't Need To)
-- `uv run pytest` (full test suite)
-- `uv run ruff check .` (linting)
-- `uv run mypy .` (type checking)
+- <CONFIG>Test command</CONFIG> (full test suite)
+- <CONFIG>Lint command</CONFIG> (linting)
+- <CONFIG>Type check command</CONFIG> (type checking)
 
 ### What You Do
 - **Run new tests only** — tests created for this specific issue
@@ -58,7 +58,7 @@ Then **STOP** — do not proceed with testing.
 ## Step 1: Get Issue Details
 
 ```bash
-python project-management/tools/linear.py issue get CON-XXX --json
+# Use /linear-tool skill for Linear operations
 ```
 
 **Extract from comments:**
@@ -77,11 +77,10 @@ git fetch origin
 git checkout <branch-name>
 
 # Swap labels (remove agent_ready if present, add agent_working)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
+# Use /linear-tool skill for Linear operations
 
 # Comment to claim
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Starting comprehensive testing."
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -140,17 +139,14 @@ Before running tests, verify the implementation matches the spec's constraints (
 
 ```bash
 # See what test files were added/modified in this PR
-gh pr diff <pr-number> --name-only | grep -E "test_.*\.py$|_test\.py$"
+gh pr diff <pr-number> --name-only | grep -E "<CONFIG>Test file pattern (e.g., test_.*\.py$, *.test.ts$)</CONFIG>"
 ```
 
 ### Run Those Tests
 
 ```bash
 # Run specific test file(s) from this PR
-uv run pytest <path/to/new_test_file.py> -v
-
-# Run with coverage for the new package
-uv run pytest <path/to/new_test_file.py> --cov=<package> --cov-report=term-missing
+<CONFIG>Run single test file command</CONFIG>
 ```
 
 ### Verify Tests Pass
@@ -159,7 +155,7 @@ uv run pytest <path/to/new_test_file.py> --cov=<package> --cov-report=term-missi
 - [ ] Coverage is reasonable for new code
 - [ ] No unexpected warnings or deprecations
 
-**Note:** If CI is failing on the full suite, that's a blocker — but you don't need to run `uv run pytest` yourself. Check the CI status on the PR.
+**Note:** If CI is failing on the full suite, that's a blocker — but you don't need to run the full test suite yourself. Check the CI status on the PR.
 
 ---
 
@@ -202,12 +198,9 @@ Go beyond automated tests. For each feature/change:
 
 ```bash
 # Time a test
-time uv run pytest <test>
+time <CONFIG>Run single test file command</CONFIG>
 
-# Profile memory usage
-uv run pytest --memray
-
-# Load testing (if API)
+# Profile memory/performance (project-specific tooling)
 # Use appropriate tools for the project
 ```
 
@@ -274,20 +267,13 @@ Create a detailed test report. Include:
 2. **Update Linear (brief):**
    ```bash
    # Comment (short)
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Testing complete — ALL PASS.
-
-   **PR:** <GitHub PR URL>
-
-   Ready to merge. See PR for full test report.
-
-   **Next steps:** Run \`/pm:merge <PR-URL>\` to merge the PR."
+   # Use /linear-tool skill for Linear operations
 
    # Move to Ready to Merge
-   python project-management/tools/linear.py issue update CON-XXX --state "Ready to Merge"
+   # Use /linear-tool skill for Linear operations
 
    # Swap labels
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+   # Use /linear-tool skill for Linear operations
    ```
 
 3. **Report to human:**
@@ -365,21 +351,13 @@ Categorize each issue as **blocking** or **non-blocking**:
 2. **Update Linear (brief — just the link):**
    ```bash
    # Comment (SHORT - details on GitHub)
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Testing found issues.
-
-   **PR:** <GitHub PR URL>
-
-   - Blocking: X issues
-   - Non-blocking: Y issues
-
-   See PR for details."
+   # Use /linear-tool skill for Linear operations
 
    # Stay in Testing state, add testing-phase-failed label
-   python project-management/tools/linear.py issue update CON-XXX --add-label testing-phase-failed
+   # Use /linear-tool skill for Linear operations
 
    # Swap labels
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+   # Use /linear-tool skill for Linear operations
    ```
 
 3. **Report to human:**
@@ -404,9 +382,7 @@ Categorize each issue as **blocking** or **non-blocking**:
 
 1. **Claim the task:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Fixing testing issues."
+   # Use /linear-tool skill for Linear operations
    ```
 
 2. **Read the PR comments** for the detailed test report
@@ -417,17 +393,7 @@ Categorize each issue as **blocking** or **non-blocking**:
 
 5. **Signal ready for re-test:**
    ```bash
-   python project-management/tools/linear.py issue update CON-XXX --remove-label testing-phase-failed
-   python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-   python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
-   python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Fixes pushed. Ready for re-test.
-
-   **PR:** <GitHub PR URL>
-
-   **Fixed:**
-   - <list of fixes made>
-
-   **Next steps:** Run \`/checkout CON-XXX\` to re-run tests."
+   # Use /linear-tool skill for Linear operations
    ```
 
 6. **Report to human:**

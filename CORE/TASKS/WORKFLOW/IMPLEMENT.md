@@ -32,7 +32,7 @@ git branch --show-current
 
 **If you're on `main`:** Something went wrong in checkout. Run:
 ```bash
-python project-management/tools/linear.py issue get CON-XXX
+# Use /linear-tool skill for Linear operations
 # Look for the Branch: field, then:
 git checkout <branch-name-from-linear>
 ```
@@ -42,15 +42,10 @@ git checkout <branch-name-from-linear>
 ## Step 2: Claim the Task
 
 ```bash
-# Update status
-python project-management/tools/linear.py issue update CON-XXX --state "Work Started"
-
-# Swap labels (remove agent_ready if present, add agent_working)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
-
-# Comment to claim (NOTE: angle brackets around agent name are required)
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Starting implementation."
+# Use /linear-tool skill for Linear operations
+# - Update status to "Work Started"
+# - Swap labels (remove agent_ready if present, add agent_working)
+# - Comment to claim (NOTE: angle brackets around agent name are required)
 ```
 
 ---
@@ -84,25 +79,58 @@ Check if the issue has a `has_spec` label:
 
 ---
 
-## Step 3.5: Library Reuse Check
+## Step 3.5: Check for Sub-agent Mode
+
+**If `SUB_AGENT_COUNT` was passed from checkout (value > 0):**
+
+The spec review recommended parallel implementation. Use the orchestrator:
+
+1. **Spawn the orchestrator:**
+   ```
+   Task(
+     subagent_type: "implement-orchestrator-opus",
+     prompt: """
+     Implement spec at: <spec-path>
+     Sub-agent count: <SUB_AGENT_COUNT>
+     Issue: <CON-XXX>
+
+     Deliverable groups from spec review (if available):
+     <paste from spec review approval if provided>
+     """
+   )
+   ```
+
+2. **Wait for orchestrator to complete**
+
+3. **Skip to Step 6** (Verify Your Changes) — the orchestrator handles Step 4
+
+**Validation:**
+- `SUB_AGENT_COUNT` must be 2-4 (reject other values)
+- Spec must have `has_spec` label (sub-agents need clear requirements)
+- If orchestrator reports integration failure, you handle the fix
+
+**If `SUB_AGENT_COUNT` is 0 or not specified:** Continue with single-agent implementation below.
+
+---
+
+## Step 3.6: Library Reuse Check
 
 Before implementing any utility code, verify you're not reinventing:
 
 ### Standard Library Check
 
-| If You Need... | Check First | Don't Reinvent |
-|----------------|-------------|----------------|
-| Version parsing/comparison | `packaging.version` | Custom semver parser |
-| Path manipulation | `pathlib` | Custom string operations |
-| JSON schema validation | `pydantic` | Custom validators |
-| HTTP client | `httpx` | Custom HTTP handling |
-| Async primitives | `asyncio` | Custom event loop |
+Check if the language/framework already provides what you need. Don't reinvent:
+- Version parsing/comparison
+- Path manipulation
+- Schema validation
+- HTTP clients
+- Async primitives
 
 ### Existing Code Check
 
 ```bash
 # Search for similar patterns in codebase
-grep -r "<pattern>" src/packages/ src/apps/
+grep -r "<pattern>" <CONFIG>Source directory</CONFIG>
 ```
 
 If similar code exists, use it or extract to shared location.
@@ -139,14 +167,14 @@ If anything is missing, implement it now. Incomplete implementations will be cau
 **Run tests and checks before creating a PR.** Catch issues early, before CI and reviewers.
 
 ```bash
-# Run all tests
-uv run pytest src/packages/ src/apps/ -v
+# Run tests
+<CONFIG>Test command</CONFIG>
 
 # Run linting
-uv run ruff check .
+<CONFIG>Lint command</CONFIG>
 
 # Run type checking
-uv run mypy src/packages/
+<CONFIG>Type check command</CONFIG>
 ```
 
 **If tests fail:**
@@ -154,10 +182,10 @@ uv run mypy src/packages/
 - If blocked, add `human_input` label and report
 
 **If lint/type errors exist:**
-- Fix auto-fixable issues: `uv run ruff check . --fix`
+- Run auto-fix: <CONFIG>Lint fix command</CONFIG>
 - Address remaining issues manually
 
-> **Why this matters:** CON-288 showed that skipping local verification leads to CI failures after PR creation. Running tests locally catches issues faster and reduces review cycles.
+> **Why this matters:** Skipping local verification leads to CI failures after PR creation. Running tests locally catches issues faster and reduces review cycles.
 
 ---
 
@@ -225,21 +253,10 @@ EOF
 ## Step 8: Update Linear
 
 ```bash
-# Move to In Review
-python project-management/tools/linear.py issue update CON-XXX --state "In Review"
-
-# CRITICAL: Swap labels (you started with agent_working, end with agent_ready)
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
-
-# Comment (brief - details are in PR)
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] <$AGENT_NAME>: Implementation complete.
-
-**PR:** <GitHub PR URL>
-
-See PR for full details and test plan.
-
-**Next steps:** Run \`/checkout CON-XXX\` to start PR review."
+# Use /linear-tool skill for Linear operations
+# - Move to "In Review" state
+# - CRITICAL: Swap labels (you started with agent_working, end with agent_ready)
+# - Comment (brief - details are in PR): "Implementation complete. PR: <URL>. Next steps: Run /checkout CON-XXX to start PR review."
 ```
 
 ---

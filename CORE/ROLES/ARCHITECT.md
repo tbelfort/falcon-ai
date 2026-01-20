@@ -126,7 +126,7 @@ git pull origin main
 git checkout -b arch/<topic>
 ```
 
-Branch naming: `arch/foundry-concepts`, `arch/error-taxonomy`, `arch/pipeline-design`, etc.
+Branch naming: `arch/<topic>`, e.g., `arch/core-concepts`, `arch/error-taxonomy`, `arch/pipeline-design`
 
 ### Committing Changes
 
@@ -177,9 +177,6 @@ Understand what goes where:
 
 When starting architecture work:
 
-```bash
-# Comment on Linear (if applicable)
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Assuming Architect role for this task."
-```
+# Use /linear-tool skill for Linear operations
 
 If there's no Linear issue (common for Architect work), just confirm with the human that you're taking on the role.

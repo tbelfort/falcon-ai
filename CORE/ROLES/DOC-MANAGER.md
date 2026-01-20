@@ -1,6 +1,6 @@
 # Worker: Doc Manager
 
-**Role:** Steward the documentation system for the agents-platform repository.
+**Role:** Steward the documentation system for the <CONFIG>Repository name</CONFIG> repository.
 
 ---
 
@@ -42,11 +42,7 @@ If you're not sure, you're probably NOT the Doc Manager. Regular agents cannot e
 
 You have a Linear issue explicitly labeled `docs`. This is your authorization.
 
-```bash
-# Verify the issue has the docs label
-python "$REPO_ROOT/project-management/tools/linear.py" issue get CON-XXX
-# Look for: labels: [..., "docs", ...]
-```
+# Use /linear-tool skill for Linear operations
 
 If the issue doesn't have the `docs` label, **STOP**. You are not authorized.
 
@@ -73,18 +69,56 @@ Even as Doc Manager:
 
 ---
 
-## Architecture ↔ Specs Rule (CRITICAL)
+## Cross-Tier Reference Rules (CRITICAL)
 
-**Architecture docs must NEVER reference package specs.** The information flow is one-way:
+Documentation flows **downstream** through the tiers. Higher tiers define intent; lower tiers reference them for context.
 
 ```
-Architecture docs → Specs → Implementation
+Tier 1 (Design) → Tier 2 (Systems) → Tier 3 (Support)
+     ↓                  ↓                   ↓
+  what/why          how built          how to operate
 ```
 
-- Specs cite architecture docs (allowed)
-- Architecture docs cite specs (FORBIDDEN)
+### Allowed References
 
-This keeps architecture docs as the stable foundation. Specs are ephemeral per-issue artifacts; architecture is permanent.
+| From | To | Allowed? | Rationale |
+|------|----|----------|-----------|
+| Design → Systems | ✅ Yes | Design docs can reference technical constraints |
+| Design → Support | ✅ Yes | Design can note operational considerations |
+| Systems → Design | ⚠️ Sparingly | Only for "why" context, never for requirements |
+| Systems → Support | ✅ Yes | Technical docs can link to runbooks |
+| Support → Systems | ✅ Yes | Runbooks reference technical docs heavily |
+| Support → Design | ❌ No | Operational docs don't depend on design intent |
+
+### Specs Are NOT Documentation
+
+**Specs (`specs/`) are workflow artifacts, not part of the 3-tier doc system.** They are:
+- Per-task implementation plans (throw-away)
+- Ephemeral — deleted or archived after implementation
+- NOT managed by Doc Manager
+
+```
+                    ┌─────────────────────────────────┐
+                    │     3-Tier Doc System           │
+                    │  (permanent, managed by you)    │
+                    │                                 │
+                    │  Design → Systems → Support     │
+                    └───────────────┬─────────────────┘
+                                    │ referenced by
+                                    ▼
+                    ┌─────────────────────────────────┐
+                    │     Specs (specs/)              │
+                    │  (ephemeral workflow artifacts) │
+                    │                                 │
+                    │  Created per-task, then deleted │
+                    └─────────────────────────────────┘
+```
+
+**Reference rules:**
+- Specs cite architecture docs (allowed) — specs consume documentation
+- Architecture docs cite specs (FORBIDDEN) — docs never depend on ephemeral artifacts
+
+This keeps architecture docs as the stable foundation.
 
 ---
 
@@ -137,19 +171,24 @@ git checkout -b doc-manager
 
 ## Getting Started
 
-When you are assigned as Doc Manager, read the full instructions:
+When you are assigned as Doc Manager, read the full instructions (in tier order):
 
 ```bash
+# Tier 1: Design (intent & planning)
+cat docs/design/INDEX.md
+
+# Tier 2: Systems (technical reference)
 cat docs/systems/INDEX.md
 cat docs/systems/architecture/README.md
 cat docs/systems/architecture/INDEX.md
-cat docs/support/INDEX.md
-cat docs/design/INDEX.md
 cat docs/systems/adr/README.md
+
+# Tier 3: Support (operational)
+cat docs/support/INDEX.md
 cat docs/support/releasing.md
 ```
 
-These docs define the repo’s doc taxonomy, ownership model, and maintenance expectations.
+These docs define the repo's doc taxonomy, ownership model, and maintenance expectations.
 
 ---
 
@@ -157,27 +196,35 @@ These docs define the repo’s doc taxonomy, ownership model, and maintenance ex
 
 **File locations (3-tier structure):**
 
-**Tier 1: Systems** (for implementors)
+```
+Tier 1 (Design) → Tier 2 (Systems) → Tier 3 (Support)
+     ↓                  ↓                   ↓
+  what/why          how built          how to operate
+```
+
+**Tier 1: Design** (intent & planning — evolves across project lifecycle)
+- Design docs: `docs/design/`
+- Design index: `docs/design/INDEX.md`
+- Roadmap: `docs/design/roadmap/`
+- App design: `docs/design/apps/<app>/` (personas, architecture, wireframes)
+- Note: Design docs are NOT frozen after implementation. They evolve as features iterate.
+
+**Tier 2: Systems** (technical reference — how it's built)
 - Architecture: `docs/systems/architecture/`
 - Architecture index: `docs/systems/architecture/INDEX.md`
-- ADRs: `docs/systems/adr/`
+- ADRs: `docs/systems/adr/` — *Formalized design decisions that became permanent technical constraints. ADRs capture the "why" but live in Systems because they're now binding technical reference.*
 - Config: `docs/systems/config/`
 - Testing: `docs/systems/testing/`
 - App-level systems: `docs/systems/apps/<app>/` (api, dbs, ux, config, workflows)
+- Note: A single Design feature typically spans multiple Systems docs (db schema, API, config, etc.)
 
-**Tier 2: Support** (for operations/team)
+**Tier 3: Support** (operational — post-build)
 - Ops/runbooks: `docs/support/ops/`
 - Incidents: `docs/support/incidents/`
 - Troubleshooting: `docs/support/troubleshooting/`
 - Integrations: `docs/support/integrations/`
 - Guides: `docs/support/guides/`
 - Releasing: `docs/support/releasing.md`
-
-**Tier 3: Design** (pre-implementation)
-- Design docs: `docs/design/`
-- Design index: `docs/design/INDEX.md`
-- Roadmap: `docs/design/roadmap/`
-- App design: `docs/design/apps/<app>/` (personas, architecture, wireframes)
 
 **Other Research** (reference only)
 - External research: `docs/other_research/`
@@ -222,9 +269,6 @@ When a draft under `docs/design/**/drafts/` is referenced by active work:
 
 When starting doc management work:
 
-```bash
-# Comment on Linear (if applicable)
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Assuming Doc Manager role for this task."
-```
+# Use /linear-tool skill for Linear operations
 
 When complete, always verify `docs/systems/architecture/INDEX.md` and `docs/design/INDEX.md` are current.

@@ -6,6 +6,64 @@
 
 ---
 
+## Parallel Phase Coordination
+
+**Phase 3 runs in parallel with Phase 2.** Both phases depend on Phase 1 and feed into Phase 4.
+
+### Shared Interfaces (coordinate changes with Phase 2)
+
+| Interface | Defined By | Used By | Notes |
+|-----------|-----------|---------|-------|
+| `PatternDefinition` | Phase 1 | Both | Pattern storage format |
+| `PatternOccurrence` | Phase 1 | Both | Occurrence storage format |
+| `TaskProfile` | Phase 1 | Phase 3 | Injection matching |
+| `Touch` enum | Phase 1 | Both | Tagging taxonomy |
+| `ContextPackMetadata` | Phase 3 (3.1) | Phase 2 (via Phase 4) | **This phase defines it** |
+
+### Coordination Points
+
+1. **ContextPackMetadata contract**: Phase 3 (Section 3.1) defines the `ContextPackMetadata` interface. This is used by Phase 4 to pass data from Context Pack to injection. Coordinate any schema changes.
+
+2. **FindingCategory taxonomy**: Phase 3 uses `findingCategory` for filtering patterns. Phase 2 uses `mapScoutToCategory()` to classify findings into these same categories. Keep the mapping consistent.
+
+3. **patternKey uniqueness**: Phase 3's selector assumes `patternKey` uniquely identifies a pattern within a project scope. Phase 2 computes this key. Don't change the deduplication logic independently.
+
+4. **Severity ordering**: Phase 3 orders warnings by severity (CRITICAL > HIGH > MEDIUM > LOW). Phase 2 assigns these severities. The ranking logic must be consistent.
+
+### Non-Overlapping Concerns
+
+- Phase 2 focuses on **attribution** (evidence extraction, failure mode classification)
+- Phase 3 focuses on **injection** (warning selection, formatting, token estimation)
+
+These concerns should not overlap. If you're adding code that crosses this boundary, coordinate with the other phase.
+
+---
+
+## Dependencies & Patterns
+
+**Research Document:** [`ai_docs/phase-3-patterns.md`](../../ai_docs/phase-3-patterns.md)
+
+This phase implements several key patterns documented in the research file:
+
+| Component | Pattern | Source |
+|-----------|---------|--------|
+| Warning Selection | Weighted priority queue with tiered slots | Section 1.1-1.2 |
+| Diversity Sampling | Category caps (security: 3 max) + guaranteed slots | Section 1.3 |
+| Deterministic Ordering | Multi-level tie-breaking (severity, recency, id) | Section 1.4 |
+| Template Rendering | Markdown sections with structured formatting | Section 2.1-2.2 |
+| Token Estimation | Character-based heuristic (3.5 chars/token for Claude) | Section 3.3-3.4 |
+| Scope Inheritance | Hierarchical multi-tenant (workspace -> project) | Section 4 |
+| Cross-Project Warnings | Security-only with relevance gates | Section 4.3 |
+
+**Key Design Decisions:**
+1. **Tiered selection over pure priority:** Guarantees diversity (1 baseline + 1 derived + up to 4 patterns)
+2. **Security category priority:** Up to 3 security patterns selected before other categories
+3. **Markdown formatting:** GPT-4 prefers markdown; improves accuracy by 10-13% in structured tasks
+4. **Simple string interpolation:** Template engines add complexity without benefit for predictable formats
+5. **Hierarchical scoping:** Principles at workspace level, patterns at project level
+
+---
+
 ## 1. Overview
 
 This phase implements the Injection System that:
@@ -18,7 +76,8 @@ This phase implements the Injection System that:
 
 ## 2. Deliverables Checklist
 
-- [ ] `src/injection/task-profile-extractor.ts` - TaskProfile from issue
+- [ ] `src/injection/context-pack-metadata.ts` - ContextPackMetadata contract (see 3.1)
+- [ ] `src/injection/task-profile-extractor.ts` - TaskProfile from issue & Context Pack
 - [ ] `src/injection/selector.ts` - Tiered pattern selection
 - [ ] `src/injection/confidence.ts` - Confidence/priority calculation
 - [ ] `src/injection/formatter.ts` - Warning markdown generation
@@ -30,11 +89,129 @@ This phase implements the Injection System that:
 
 ## 3. TaskProfile Extraction
 
-### 3.1 Extractor Implementation
+### 3.1 Context Pack Metadata Contract
+
+**IMPORTANT:** This section defines the contract that Context Pack generators MUST follow.
+
+The Context Pack metadata is produced by the Context Pack workflow (outside this system) and consumed by the injection system to extract accurate TaskProfiles. This contract ensures interoperability.
+
+```typescript
+// File: src/injection/context-pack-metadata.ts
+// COORDINATION NOTE: This interface is the source of truth for Context Pack generators.
+// If you modify this, coordinate with whoever generates Context Packs.
+
+import { z } from 'zod';
+import type { TaskProfile, Touch } from '../schemas';
+
+/**
+ * Constraint extracted from context sources.
+ * Source can be a file path, URL, or structured reference.
+ */
+export interface ExtractedConstraint {
+  constraint: string;       // The constraint text (e.g., "Must validate user input")
+  source: {
+    type: 'file' | 'url' | 'linear_doc' | 'inline';
+    path?: string;          // For 'file' type
+    url?: string;           // For 'url' or 'linear_doc' type
+    section?: string;       // Optional section/heading reference
+  };
+}
+
+export const ExtractedConstraintSchema = z.object({
+  constraint: z.string(),
+  source: z.object({
+    type: z.enum(['file', 'url', 'linear_doc', 'inline']),
+    path: z.string().optional(),
+    url: z.string().optional(),
+    section: z.string().optional()
+  })
+});
+
+/**
+ * Context Pack Metadata - The contract for Context Pack → Injection System interop.
+ *
+ * The Context Pack workflow should output this metadata alongside the Context Pack content.
+ * This allows the injection system to:
+ * 1. Extract accurate TaskProfile for pattern matching
+ * 2. Determine which warnings are relevant to the task
+ *
+ * GENERATION REQUIREMENTS:
+ * - If the Context Pack generator can determine explicit taskProfile values, include them
+ * - If not, constraintsExtracted allows the injection system to infer the profile
+ * - At minimum, constraintsExtracted SHOULD be populated for inference fallback
+ */
+export interface ContextPackMetadata {
+  /**
+   * Explicit TaskProfile if the Context Pack generator can determine it.
+   * This is more accurate than inference and should be provided when possible.
+   */
+  taskProfile?: Partial<TaskProfile>;
+
+  /**
+   * Constraints extracted from architecture docs, README, etc.
+   * Used for TaskProfile inference if explicit profile not provided.
+   * Each constraint includes its source for traceability.
+   */
+  constraintsExtracted?: ExtractedConstraint[];
+
+  /**
+   * Context Pack version/hash for cache invalidation.
+   * Optional but recommended for debugging injection issues.
+   */
+  contentHash?: string;
+
+  /**
+   * Timestamp when Context Pack was generated.
+   */
+  generatedAt?: string;
+}
+
+export const ContextPackMetadataSchema = z.object({
+  taskProfile: z.object({
+    touches: z.array(z.string()).optional(),
+    technologies: z.array(z.string()).optional(),
+    taskTypes: z.array(z.string()).optional(),
+    confidence: z.number().min(0).max(1).optional()
+  }).optional(),
+  constraintsExtracted: z.array(ExtractedConstraintSchema).optional(),
+  contentHash: z.string().optional(),
+  generatedAt: z.string().optional()
+});
+```
+
+**Example Context Pack Metadata:**
+
+```json
+{
+  "taskProfile": {
+    "touches": ["database", "auth"],
+    "technologies": ["postgres", "jwt"],
+    "taskTypes": ["backend", "api"],
+    "confidence": 0.85
+  },
+  "constraintsExtracted": [
+    {
+      "constraint": "All database queries must use parameterized statements",
+      "source": { "type": "file", "path": "ARCHITECTURE.md", "section": "Security" }
+    },
+    {
+      "constraint": "JWT tokens must be validated on every request",
+      "source": { "type": "linear_doc", "url": "https://linear.app/docs/auth-spec" }
+    }
+  ],
+  "contentHash": "sha256:abc123...",
+  "generatedAt": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+### 3.2 Extractor Implementation
 
 ```typescript
 // File: src/injection/task-profile-extractor.ts
 import type { TaskProfile, Touch } from '../schemas';
+import type { ContextPackMetadata } from './context-pack-metadata';
 
 export interface IssueData {
   title: string;
@@ -67,11 +244,9 @@ export function extractTaskProfileFromIssue(issue: IssueData): TaskProfile {
 /**
  * Extract TaskProfile from Context Pack metadata.
  * More accurate than issue extraction.
+ * Uses formal ContextPackMetadata contract from context-pack-metadata.ts.
  */
-export function extractTaskProfileFromContextPack(metadata: {
-  taskProfile?: Partial<TaskProfile>;
-  constraintsExtracted?: Array<{ constraint: string; source: unknown }>;
-}): TaskProfile {
+export function extractTaskProfileFromContextPack(metadata: ContextPackMetadata): TaskProfile {
   // If Context Pack provides explicit taskProfile, use it
   if (metadata.taskProfile) {
     return {
@@ -611,6 +786,7 @@ import { PatternDefinitionRepository } from '../storage/repositories/pattern-def
 import { PatternOccurrenceRepository } from '../storage/repositories/pattern-occurrence.repo';
 import { DerivedPrincipleRepository } from '../storage/repositories/derived-principle.repo';
 import { ProvisionalAlertRepository } from '../storage/repositories/provisional-alert.repo';
+import { ProjectRepository } from '../storage/repositories/project.repo';  // v1.2 FIX: For status check
 import { computeInjectionPriority, computePatternStats } from './confidence';
 
 export interface InjectedWarning {
@@ -648,22 +824,44 @@ export interface InjectionResult {
  *
  * v1.1: Updated for hierarchical scoping (workspace → project)
  */
+// v1.2 FIX: Changed to options object to match Phase 4 calling convention
 export function selectWarningsForInjection(
   db: Database,
-  workspaceId: string,
-  projectId: string,
-  target: 'context-pack' | 'spec',
-  taskProfile: TaskProfile,
-  maxTotal: number = 6,
-  options: { crossProjectWarnings?: boolean } = {}
+  options: {
+    workspaceId: string;
+    projectId: string;
+    target: 'context-pack' | 'spec';
+    taskProfile: TaskProfile;
+    maxWarnings?: number;
+    crossProjectWarnings?: boolean;
+  }
 ): InjectionResult {
+  const {
+    workspaceId,
+    projectId,
+    target,
+    taskProfile,
+    maxWarnings: maxTotal = 6,
+    crossProjectWarnings = false
+  } = options;
   const patternRepo = new PatternDefinitionRepository(db);
   const occurrenceRepo = new PatternOccurrenceRepository(db);
   const principleRepo = new DerivedPrincipleRepository(db);
   const alertRepo = new ProvisionalAlertRepository(db);
+  const projectRepo = new ProjectRepository(db);  // v1.2 FIX: For status check
 
   const selected: InjectedWarning[] = [];
   const selectedAlerts: InjectedAlert[] = [];
+
+  // ========================================
+  // PRE-CHECK: Verify project is active
+  // v1.2 FIX: Skip injection entirely for archived projects
+  // ========================================
+  const project = projectRepo.findById({ workspaceId, id: projectId });
+  if (!project || project.status === 'archived') {
+    // Return empty result for archived/missing projects
+    return { warnings: [], alerts: [] };
+  }
 
   // ========================================
   // STEP 1: Select baseline principles (WORKSPACE level)
@@ -787,19 +985,23 @@ export function selectWarningsForInjection(
   // v1.2: Added relevance gate (touchOverlap >= 2) and deduplication
   // ========================================
 
-  if (options.crossProjectWarnings) {
+  if (crossProjectWarnings) {
     // v1.1: Query HIGH/CRITICAL patterns from other projects in same workspace
+    // v1.2 FIX: Only include SECURITY patterns for cross-project warnings (reduce noise)
     const crossProjectPatterns = patternRepo.findCrossProject({
       workspaceId,
       excludeProjectId: projectId,
       carrierStage: target,
-      minSeverity: 'HIGH'
+      minSeverity: 'HIGH',
+      findingCategory: 'security'  // v1.2: Only security patterns cross project boundaries
     });
 
-    // v1.2: Relevance gate - require touchOverlap >= 2 to reduce noise
+    // v1.2: Relevance gate - require touchOverlap >= 2 OR techOverlap >= 1 to reduce noise
+    // This allows patterns to match if they share 2+ touches OR at least 1 technology
     const relevantCrossPatterns = crossProjectPatterns.filter(p => {
       const touchOverlap = p.touches.filter(t => taskProfile.touches.includes(t)).length;
-      return touchOverlap >= 2;
+      const techOverlap = p.technologies.filter(t => taskProfile.technologies.includes(t)).length;
+      return touchOverlap >= 2 || techOverlap >= 1;
     });
 
     // v1.2: Deduplication - if same patternKey exists in current project, skip cross-project version
@@ -904,25 +1106,27 @@ export function selectWarningsForInjection(
   }
 
   // ========================================
-  // STEP 5: Low-confidence fallback
+  // STEP 5: Low-confidence fallback (project-wide patterns)
+  // v1.2 FIX: Renamed from "global" to "project-wide" (matches scoping model)
+  // v1.2 FIX: Use severityMax instead of severity (worst observed impact)
   // ========================================
 
   if (taskProfile.confidence < 0.5 && selected.length < maxTotal) {
-    // Add global high-severity patterns regardless of match
-    const globalHighSeverity = allPatterns
+    // Add project-wide high-severity patterns regardless of match
+    const projectHighSeverity = allPatterns
       .filter(p =>
-        (p.severity === 'CRITICAL' || p.severity === 'HIGH') &&
+        (p.severityMax === 'CRITICAL' || p.severityMax === 'HIGH') &&  // v1.2 FIX: Use severityMax
         !selected.find(s => s.id === p.id)
       )
       .slice(0, 2);
 
-    for (const pattern of globalHighSeverity) {
+    for (const pattern of projectHighSeverity) {
       if (selected.length >= maxTotal) break;
       const stats = computePatternStats(pattern.id, occurrenceRepo);
       selected.push({
         type: 'pattern',
         id: pattern.id,
-        priority: computeInjectionPriority(pattern, taskProfile, stats) * 0.8, // Lower priority
+        priority: computeInjectionPriority(pattern, taskProfile, stats) * 0.8, // Lower priority for fallback
         content: pattern
       });
     }
@@ -936,10 +1140,14 @@ export function selectWarningsForInjection(
   // NOTE: v1.0 ProvisionalAlert only has 'touches' for filtering (no technologies field)
 
   // v1.1: Query alerts at project level
+  // v1.2 FIX: Explicitly check expiresAt > now() to filter out expired alerts
+  const now = new Date().toISOString();
   const activeAlerts = alertRepo.findActive({
     workspaceId,
     projectId
   }).filter(alert =>
+    // v1.2 FIX: Ensure alert is not expired
+    alert.expiresAt > now &&
     // Match by touches only (v1.0 schema doesn't include technologies)
     alert.touches.some(t => taskProfile.touches.includes(t)) &&
     // Match injection target
@@ -966,7 +1174,7 @@ export function selectWarningsForInjection(
 
 /**
  * Check if pattern meets inferred gate for injection.
- * See Spec Section 4.3.
+ * See Spec Section 4.4 (Special Rules for Inferred Patterns).
  *
  * Inferred patterns require:
  * - 2+ active occurrences, OR
@@ -1060,6 +1268,366 @@ export function resolveConflicts<T extends { id: string; content: { findingCateg
   }
 
   return resolved;
+}
+```
+
+### 5.2 Selector Tests
+
+**File:** `tests/injection/selector.test.ts`
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { selectWarningsForInjection } from '../../src/injection/selector';
+import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo';
+import { DerivedPrincipleRepository } from '../../src/storage/repositories/derived-principle.repo';
+import { ProvisionalAlertRepository } from '../../src/storage/repositories/provisional-alert.repo';
+import { ProjectRepository } from '../../src/storage/repositories/project.repo';
+
+describe('selectWarningsForInjection', () => {
+  let patternRepo: PatternDefinitionRepository;
+  let principleRepo: DerivedPrincipleRepository;
+  let alertRepo: ProvisionalAlertRepository;
+  let projectRepo: ProjectRepository;
+
+  const workspaceId = 'ws-123';
+  const projectId = 'proj-456';
+
+  beforeEach(() => {
+    patternRepo = {
+      findActive: vi.fn(),
+      findCrossProject: vi.fn().mockReturnValue([])
+    } as unknown as PatternDefinitionRepository;
+
+    principleRepo = {
+      findForInjection: vi.fn()
+    } as unknown as DerivedPrincipleRepository;
+
+    alertRepo = {
+      findActive: vi.fn().mockReturnValue([])
+    } as unknown as ProvisionalAlertRepository;
+
+    projectRepo = {
+      findById: vi.fn().mockReturnValue({ id: projectId, status: 'active' })
+    } as unknown as ProjectRepository;
+  });
+
+  describe('tiered selection', () => {
+    it('selects 1 baseline + 1 derived + up to 4 patterns (maxTotal=6)', async () => {
+      const baseline = createPrinciple({ origin: 'baseline', touches: ['database'] });
+      const derived = createPrinciple({ origin: 'derived', touches: ['database'] });
+      const patterns = [
+        createPattern({ findingCategory: 'security', severityMax: 'HIGH' }),
+        createPattern({ findingCategory: 'security', severityMax: 'MEDIUM' }),
+        createPattern({ findingCategory: 'correctness', severityMax: 'HIGH' }),
+        createPattern({ findingCategory: 'correctness', severityMax: 'MEDIUM' }),
+        createPattern({ findingCategory: 'testing', severityMax: 'LOW' })
+      ];
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([baseline, derived]);
+      vi.mocked(patternRepo.findActive).mockReturnValue(patterns);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      expect(result.warnings.length).toBeLessThanOrEqual(6);
+      expect(result.warnings.filter(w => w.type === 'baseline').length).toBe(1);
+      expect(result.warnings.filter(w => w.type === 'derived').length).toBe(1);
+    });
+
+    it('prioritizes security patterns (up to 3)', async () => {
+      const patterns = [
+        createPattern({ findingCategory: 'security', severityMax: 'CRITICAL', id: 'sec-1' }),
+        createPattern({ findingCategory: 'security', severityMax: 'HIGH', id: 'sec-2' }),
+        createPattern({ findingCategory: 'security', severityMax: 'MEDIUM', id: 'sec-3' }),
+        createPattern({ findingCategory: 'security', severityMax: 'LOW', id: 'sec-4' }),
+        createPattern({ findingCategory: 'correctness', severityMax: 'CRITICAL', id: 'cor-1' })
+      ];
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue(patterns);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'spec',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      const securityPatterns = result.warnings.filter(
+        w => w.type === 'pattern' && w.content.findingCategory === 'security'
+      );
+      expect(securityPatterns.length).toBeLessThanOrEqual(3);
+    });
+  });
+
+  describe('cross-project warnings', () => {
+    it('includes cross-project patterns when enabled', async () => {
+      const crossProjectPattern = createPattern({
+        findingCategory: 'security',
+        severityMax: 'HIGH',
+        touches: ['database', 'user_input']
+      });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue([]);
+      vi.mocked(patternRepo.findCrossProject).mockReturnValue([crossProjectPattern]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database', 'user_input'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        options: { crossProjectWarnings: true },
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      expect(result.warnings.length).toBeGreaterThan(0);
+    });
+
+    it('applies relevance gate (touchOverlap >= 2)', async () => {
+      const crossProjectPattern = createPattern({
+        findingCategory: 'security',
+        severityMax: 'HIGH',
+        touches: ['database']  // Only 1 overlap
+      });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue([]);
+      vi.mocked(patternRepo.findCrossProject).mockReturnValue([crossProjectPattern]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        options: { crossProjectWarnings: true },
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      // Should be filtered out due to relevance gate
+      const crossProject = result.warnings.filter(w => w._crossProject);
+      expect(crossProject.length).toBe(0);
+    });
+
+    it('deduplicates by patternKey (local wins)', async () => {
+      const patternKey = 'abc123';
+      const localPattern = createPattern({ patternKey, id: 'local' });
+      const crossPattern = createPattern({ patternKey, id: 'cross' });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue([localPattern]);
+      vi.mocked(patternRepo.findCrossProject).mockReturnValue([crossPattern]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        options: { crossProjectWarnings: true },
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      const patternIds = result.warnings.filter(w => w.type === 'pattern').map(w => w.id);
+      expect(patternIds).toContain('local');
+      expect(patternIds).not.toContain('cross');
+    });
+  });
+
+  describe('low-confidence fallback', () => {
+    it('includes project-wide HIGH/CRITICAL patterns when confidence < 0.5', async () => {
+      const highSeverityPattern = createPattern({
+        findingCategory: 'correctness',
+        severityMax: 'CRITICAL',
+        touches: ['network']  // Different from taskProfile
+      });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue([highSeverityPattern]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.3 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      // Should include the pattern even though touches don't match
+      expect(result.warnings.some(w => w.id === highSeverityPattern.id)).toBe(true);
+    });
+  });
+
+  describe('inferred pattern gate', () => {
+    it('filters inferred patterns with < 2 occurrences', async () => {
+      const inferredPattern = createPattern({
+        primaryCarrierQuoteType: 'inferred',
+        activeOccurrenceCount: 1
+      });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue([inferredPattern]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      expect(result.warnings.some(w => w.id === inferredPattern.id)).toBe(false);
+    });
+
+    it('allows inferred HIGH/CRITICAL with baseline alignment', async () => {
+      const inferredPattern = createPattern({
+        primaryCarrierQuoteType: 'inferred',
+        activeOccurrenceCount: 1,
+        severityMax: 'HIGH',
+        alignedBaselineId: 'baseline-123'
+      });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue([inferredPattern]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      expect(result.warnings.some(w => w.id === inferredPattern.id)).toBe(true);
+    });
+  });
+
+  describe('archived project handling', () => {
+    it('returns empty result for archived projects', async () => {
+      vi.mocked(projectRepo.findById).mockReturnValue({ id: projectId, status: 'archived' });
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      expect(result.warnings).toEqual([]);
+      expect(result.alerts).toEqual([]);
+    });
+  });
+
+  describe('ProvisionalAlerts (additive)', () => {
+    it('adds alerts without counting against maxTotal', async () => {
+      const patterns = Array(6).fill(null).map((_, i) => createPattern({ id: `p-${i}` }));
+      const alert = createAlert({ touches: ['database'] });
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue(patterns);
+      vi.mocked(alertRepo.findActive).mockReturnValue([alert]);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      // Should have 6 warnings + 1 alert (alert is additive)
+      expect(result.warnings.length).toBe(6);
+      expect(result.alerts.length).toBe(1);
+    });
+  });
+
+  describe('deterministic tie-breaking', () => {
+    it('orders patterns by severity DESC, recency ASC, id ASC', async () => {
+      const patterns = [
+        createPattern({ id: 'c', severityMax: 'HIGH', lastSeenAt: '2026-01-10' }),
+        createPattern({ id: 'a', severityMax: 'HIGH', lastSeenAt: '2026-01-15' }),
+        createPattern({ id: 'b', severityMax: 'HIGH', lastSeenAt: '2026-01-15' })
+      ];
+
+      vi.mocked(principleRepo.findForInjection).mockReturnValue([]);
+      vi.mocked(patternRepo.findActive).mockReturnValue(patterns);
+
+      const result = await selectWarningsForInjection({
+        workspaceId, projectId,
+        target: 'context-pack',
+        taskProfile: { touches: ['database'], technologies: [], taskTypes: [], confidence: 0.8 },
+        maxTotal: 6,
+        patternRepo, principleRepo, alertRepo, projectRepo
+      });
+
+      const ids = result.warnings.map(w => w.id);
+      // Same severity, 'a' is more recent than 'c', 'a' < 'b' alphabetically
+      expect(ids).toEqual(['a', 'b', 'c']);
+    });
+  });
+});
+
+// Helper factories
+function createPattern(overrides: Partial<PatternDefinition> = {}): PatternDefinition {
+  return {
+    id: overrides.id || `pattern-${Math.random().toString(36).slice(2)}`,
+    patternKey: overrides.patternKey || `key-${Math.random().toString(36).slice(2)}`,
+    contentHash: 'a'.repeat(64),
+    patternContent: 'Bad guidance',
+    failureMode: 'incorrect',
+    findingCategory: 'security',
+    severity: 'HIGH',
+    severityMax: 'HIGH',
+    alternative: 'Do this instead',
+    carrierStage: 'context-pack',
+    primaryCarrierQuoteType: 'verbatim',
+    technologies: [],
+    taskTypes: [],
+    touches: ['database'],
+    status: 'active',
+    permanent: false,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    ...overrides
+  };
+}
+
+function createPrinciple(overrides: Partial<DerivedPrinciple> = {}): DerivedPrinciple {
+  return {
+    id: `principle-${Math.random().toString(36).slice(2)}`,
+    principle: 'Always do X',
+    rationale: 'Because Y',
+    origin: 'baseline',
+    injectInto: 'both',
+    touches: ['database'],
+    confidence: 0.9,
+    status: 'active',
+    permanent: true,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    ...overrides
+  };
+}
+
+function createAlert(overrides: Partial<ProvisionalAlert> = {}): ProvisionalAlert {
+  return {
+    id: `alert-${Math.random().toString(36).slice(2)}`,
+    findingId: 'finding-123',
+    issueId: 'PROJ-123',
+    message: 'Warning message',
+    touches: ['database'],
+    injectInto: 'both',
+    expiresAt: '2026-02-01T00:00:00Z',
+    status: 'active',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides
+  };
 }
 ```
 
@@ -1339,14 +1907,184 @@ export function createInjectionLog(
 
 ---
 
-## 8. Acceptance Criteria
+## 8. Kill Switch Integration
+
+The Injection System MUST integrate with the kill switch mechanism defined in Spec Section 11.
+The kill switch monitors attribution health and may pause pattern/alert creation while keeping
+injection active for existing patterns.
+
+### 8.1 Key Principle: Injection Continues During Paused States
+
+**IMPORTANT:** When the kill switch is triggered (INFERRED_PAUSED or FULLY_PAUSED), injection
+of existing patterns and principles MUST continue unchanged. The rationale (from Spec Section 11):
+
+> Existing patterns have been vetted by occurrence counts and adherence tracking. Pausing
+> injection would lose known-good guidance that has already proven valuable.
+
+Only **new pattern creation** is paused, not the injection of existing patterns.
+
+### 8.2 Behavior by Kill Switch State
+
+| Kill Switch State | Injection Behavior | ProvisionalAlert Creation |
+|-------------------|-------------------|---------------------------|
+| `ACTIVE` | Full injection (patterns, principles, alerts) | Allowed |
+| `INFERRED_PAUSED` | Full injection (patterns, principles, alerts) | **Disabled** |
+| `FULLY_PAUSED` | Full injection (patterns, principles, alerts) | **Disabled** |
+
+### 8.3 ProvisionalAlert Creation Gate
+
+The Attribution Agent (Phase 2) is responsible for creating ProvisionalAlerts. However, when
+the kill switch state is INFERRED_PAUSED or FULLY_PAUSED, ProvisionalAlert creation MUST be
+disabled at the project scope.
+
+The Injection System receives alerts from the repository and does NOT need to check the kill
+switch state for injection—it simply injects whatever active alerts exist. The gate is
+enforced at creation time (Attribution Agent), not injection time.
+
+### 8.4 Implementation: Kill Switch Status Check
+
+```typescript
+// File: src/injection/kill-switch-check.ts
+import type { Database } from 'better-sqlite3';
+import { KillSwitchRepository } from '../storage/repositories/kill-switch.repo';
+
+export type PatternCreationState = 'active' | 'inferred_paused' | 'fully_paused';
+
+export interface KillSwitchStatus {
+  state: PatternCreationState;
+  reason: string | null;
+  enteredAt: string | null;
+  autoResumeAt: string | null;
+}
+
+/**
+ * Check if ProvisionalAlert creation is allowed for the given project.
+ * Returns false if kill switch is in INFERRED_PAUSED or FULLY_PAUSED state.
+ *
+ * NOTE: This is used by the Attribution Agent (Phase 2), not the Injection System.
+ * The Injection System always injects existing alerts regardless of kill switch state.
+ */
+export function isProvisionalAlertCreationAllowed(
+  db: Database,
+  workspaceId: string,
+  projectId: string
+): boolean {
+  const killSwitchRepo = new KillSwitchRepository(db);
+  const status = killSwitchRepo.getStatus({ workspaceId, projectId });
+
+  // Only ACTIVE state allows new alert creation
+  return status.state === 'active';
+}
+
+/**
+ * Get the current kill switch status for a project.
+ * Used for logging and observability.
+ */
+export function getKillSwitchStatus(
+  db: Database,
+  workspaceId: string,
+  projectId: string
+): KillSwitchStatus {
+  const killSwitchRepo = new KillSwitchRepository(db);
+  return killSwitchRepo.getStatus({ workspaceId, projectId });
+}
+```
+
+### 8.5 Injection Logging During Paused States
+
+When injecting during INFERRED_PAUSED or FULLY_PAUSED states, the InjectionLog MUST include
+the kill switch state for observability. This allows operators to understand system behavior
+and verify that injection continues correctly during paused periods.
+
+```typescript
+// File: src/schemas/injection-log.ts (UPDATED)
+
+/**
+ * v1.2: InjectionLog updated to include kill switch state
+ */
+export interface InjectionLog {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  issueId: string;
+  target: 'context-pack' | 'spec';
+  injectedPatterns: string[];
+  injectedPrinciples: string[];
+  injectedAlerts: string[];
+  taskProfile: TaskProfile;
+  injectedAt: string;
+  // v1.2: Kill switch state at injection time (for observability)
+  killSwitchState: PatternCreationState;
+}
+
+/**
+ * Create an InjectionLog from an injection result.
+ * v1.2: Updated to include kill switch state
+ */
+export function createInjectionLog(
+  workspaceId: string,
+  projectId: string,
+  issueId: string,
+  target: 'context-pack' | 'spec',
+  taskProfile: TaskProfile,
+  result: InjectionResult,
+  killSwitchState: PatternCreationState = 'active'
+): InjectionLog {
+  return {
+    id: crypto.randomUUID(),
+    workspaceId,
+    projectId,
+    issueId,
+    target,
+    injectedPatterns: result.warnings
+      .filter(w => w.type === 'pattern')
+      .map(w => w.id),
+    injectedPrinciples: result.warnings
+      .filter(w => w.type === 'principle')
+      .map(w => w.id),
+    injectedAlerts: result.alerts.map(a => a.id),
+    taskProfile,
+    injectedAt: new Date().toISOString(),
+    killSwitchState
+  };
+}
+```
+
+### 8.6 Observability Events
+
+When injection occurs during a paused state, emit an observability log:
+
+```json
+{
+  "event": "injection_during_paused_state",
+  "workspace_id": "ws_123",
+  "project_id": "proj_456",
+  "issue_id": "PROJ-789",
+  "kill_switch_state": "fully_paused",
+  "injection_summary": {
+    "patterns_injected": 3,
+    "principles_injected": 2,
+    "alerts_injected": 0
+  },
+  "note": "Injection continues for existing patterns; only new pattern creation is paused"
+}
+```
+
+This observability helps operators:
+1. Verify injection continues correctly during paused states
+2. Track how many injections occur while pattern creation is paused
+3. Correlate injection behavior with attribution health metrics
+
+---
+
+## 9. Acceptance Criteria
 
 Phase 3 is complete when:
 
 1. [ ] TaskProfile extracted from issue text and labels
 2. [ ] Confidence calculation follows spec formula
 3. [ ] Injection priority includes severity, relevance, recency
-4. [ ] Tiered selection: 2 baseline + up to 4 patterns, capped at 6
+4. [ ] Tiered selection: 1 baseline + 1 derived + up to 4 patterns, capped at 6
 5. [ ] Inferred pattern gate enforced
 6. [ ] Low-confidence fallback adds global high-severity
 7. [ ] Formatted output is readable markdown
@@ -1358,22 +2096,29 @@ Phase 3 is complete when:
 13. [ ] v1.1: Baseline/derived principles queried at workspace level
 14. [ ] v1.1: Patterns/alerts queried at project level
 15. [ ] v1.1: Optional cross-project patterns support
-16. [ ] All tests pass
+16. [ ] v1.2: Kill switch integration documented
+17. [ ] v1.2: Injection continues during INFERRED_PAUSED and FULLY_PAUSED states
+18. [ ] v1.2: ProvisionalAlert creation gate exports isProvisionalAlertCreationAllowed()
+19. [ ] v1.2: InjectionLog includes killSwitchState field
+20. [ ] v1.2: Observability events emitted for injection during paused states
+21. [ ] All tests pass
 
 ---
 
-## 9. Handoff to Phase 4
+## 10. Handoff to Phase 4
 
 After Phase 3, the following are available:
 
 - `extractTaskProfileFromIssue()` - Extract from Linear issue
 - `extractTaskProfileFromContextPack()` - Extract from metadata
-- `selectWarningsForInjection(db, workspaceId, projectId, target, taskProfile, maxTotal?, options?)` - v1.1: Tiered selection with hierarchical scoping
+- `selectWarningsForInjection(db, options)` - v1.2: Tiered selection with options object containing workspaceId, projectId, target, taskProfile, maxWarnings?, crossProjectWarnings?
 - `formatInjectionForPrompt()` - Markdown output with alerts section
 - `formatWarningsForInjection()` - Legacy markdown output (deprecated)
 - `computeInjectionPriority()` - Priority calculation
 - `computePatternStats()` - Pattern statistics
 - `resolveConflicts()` - Conflict precedence resolution
-- `createInjectionLog(workspaceId, projectId, issueId, target, taskProfile, result)` - v1.1: Create log with scope
+- `createInjectionLog(workspaceId, projectId, issueId, target, taskProfile, result, killSwitchState?)` - v1.2: Create log with scope and kill switch state
+- `isProvisionalAlertCreationAllowed(db, workspaceId, projectId)` - v1.2: Check if ProvisionalAlert creation is allowed (used by Attribution Agent)
+- `getKillSwitchStatus(db, workspaceId, projectId)` - v1.2: Get current kill switch status for logging
 
 Phase 4 (Integration) will wire these into the workflow hooks.

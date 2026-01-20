@@ -1,6 +1,6 @@
 # Context Pack — CON-XXX: <title>
 
-**Issue:** [CON-XXX](https://linear.app/content-foundry/issue/CON-XXX)
+**Issue:** [<CONFIG>Issue prefix</CONFIG>-XXX](<CONFIG>Linear workspace URL</CONFIG>/issue/<CONFIG>Issue prefix</CONFIG>-XXX)
 **Project:** <project-name>
 **Created:** <date>
 
@@ -50,11 +50,11 @@
 ### 3.1) Component Type
 
 **Type:** `[TYPE: <type>]`
-<!-- One of: foundry-package, forge-stage, weaver, worker, engine, ux -->
+<!-- One of: <CONFIG>Component types (e.g., package, module, service, worker, ux)</CONFIG> -->
 
 ### 3.2) Import Boundaries
 
-<!-- Extract from LAYERS.md and COMPONENT-TYPES.md for this component type -->
+<!-- Extract from <CONFIG>Architecture docs (e.g., LAYERS.md, COMPONENT-TYPES.md)</CONFIG> for this component type -->
 
 **This component MUST NOT import:**
 - <!-- List specific forbidden imports, e.g., "apps.*", "foundry_pipeline" -->
@@ -64,7 +64,7 @@
 
 ### 3.3) Component-Specific Requirements
 
-<!-- Extract from COMPONENT-TYPES.md requirements matrix. Check which apply. -->
+<!-- Extract from <CONFIG>Component requirements doc</CONFIG>. Check which apply. -->
 
 | Requirement | Applies? | Details |
 |-------------|----------|---------|
@@ -108,7 +108,7 @@
 
 ### 3.6) Test Requirements
 
-<!-- Extract from QUALITY-ATTRIBUTES.md -->
+<!-- Extract from <CONFIG>Quality attributes doc</CONFIG> -->
 
 **Minimum test count formula:** Base 20, plus:
 - +5 per Pydantic model
@@ -124,17 +124,17 @@
 
 ### 3.7) Error Handling
 
-<!-- Extract from QUALITY-ATTRIBUTES.md -->
+<!-- Extract from <CONFIG>Quality attributes doc</CONFIG> -->
 
 **Required patterns:**
-- Use FoundryError taxonomy (inherit from foundry-errors)
+- <CONFIG>Error taxonomy pattern (e.g., custom error base class)</CONFIG>
 - Include error context dict
 - No bare `except Exception`
 - No swallowed errors
 
-### 3.8) Async Requirements (IF weaver/worker/engine)
+### 3.8) Async Requirements (IF async component)
 
-<!-- Extract from COMPONENT-TYPES.md. Skip if not async component. -->
+<!-- Extract from <CONFIG>Component requirements doc</CONFIG>. Skip if not async component. -->
 
 **Required patterns:**
 | Requirement | Description |
@@ -145,7 +145,7 @@
 
 ### 3.9) UX Requirements (IF ux component)
 
-<!-- Extract from COMPONENT-TYPES.md. Skip if not UX component. -->
+<!-- Extract from <CONFIG>Component requirements doc</CONFIG>. Skip if not UX component. -->
 
 **Required patterns:**
 - TypeScript types required (no unjustified `any`)
@@ -155,7 +155,7 @@
 
 ### 3.10) Other Architecture Constraints
 
-<!-- Any other constraints from ARTIFACTS.md, EXECUTION-MODEL.md, etc. -->
+<!-- Any other constraints from <CONFIG>Architecture docs</CONFIG> -->
 
 - **Artifact IO:**
 - **Execution model:**

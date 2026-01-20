@@ -1,0 +1,8 @@
+version: "1.0"
+workspaceId: 1a6edd5b-8dce-45e7-a60c-79549e9e8411
+projectId: 67a0e9c0-17a9-464f-a881-ce8c728934f8
+workspace:
+  slug: falcon-ai
+  name: falcon-ai
+project:
+  name: falcon-ai

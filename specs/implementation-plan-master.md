@@ -151,7 +151,8 @@ export const FindingCategorySchema = z.enum([
   'security',
   'correctness',
   'testing',
-  'compliance'
+  'compliance',
+  'decisions'  // NEW in v1.0 - maps to Decisions Scout/Judge
 ]);
 
 export const SeveritySchema = z.enum([
@@ -239,6 +240,11 @@ export const EvidenceBundleSchema = z.object({
 // === PatternDefinition ===
 export const PatternDefinitionSchema = z.object({
   id: z.string().uuid(),
+  scope: z.object({
+    level: z.literal('project'),
+    workspaceId: z.string().uuid(),
+    projectId: z.string().uuid()
+  }),
   patternKey: z.string().length(64),        // SHA-256(carrierStage|patternContent|findingCategory)
   contentHash: z.string().length(64),       // SHA-256 of normalized patternContent
   patternContent: z.string().min(1).max(2000),
@@ -264,6 +270,8 @@ export const PatternDefinitionSchema = z.object({
 // === PatternOccurrence ===
 export const PatternOccurrenceSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   patternId: z.string().uuid(),
   findingId: z.string(),
   issueId: z.string(),
@@ -289,6 +297,10 @@ export const PatternOccurrenceSchema = z.object({
 // === DerivedPrinciple ===
 export const DerivedPrincipleSchema = z.object({
   id: z.string().uuid(),
+  scope: z.object({
+    level: z.literal('workspace'),
+    workspaceId: z.string().uuid()
+  }),
   principle: z.string().min(1).max(500),
   rationale: z.string().min(1).max(1000),
   origin: z.enum(['baseline', 'derived']),
@@ -316,6 +328,8 @@ export const NoncomplianceCauseSchema = z.enum([
 // === ExecutionNoncompliance ===
 export const ExecutionNoncomplianceSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   findingId: z.string(),
   issueId: z.string(),
   prNumber: z.number().int().positive(),
@@ -329,6 +343,8 @@ export const ExecutionNoncomplianceSchema = z.object({
 // === DocUpdateRequest ===
 export const DocUpdateRequestSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   findingId: z.string(),
   issueId: z.string(),
   findingCategory: FindingCategorySchema,
@@ -340,6 +356,7 @@ export const DocUpdateRequestSchema = z.object({
     'fix_error',
     'add_constraint'
   ]),
+  decisionClass: DecisionClassSchema.optional(),  // Required if findingCategory == 'decisions'
   description: z.string().min(1).max(2000),
   suggestedContent: z.string().max(5000).optional(),
   status: z.enum(['pending', 'completed', 'rejected']),
@@ -347,6 +364,21 @@ export const DocUpdateRequestSchema = z.object({
   rejectionReason: z.string().optional(),
   createdAt: z.string().datetime()
 });
+
+// === DecisionClass (NEW in v1.0) ===
+// Classification for counting decision recurrence
+export const DecisionClassSchema = z.enum([
+  'caching',           // Caching invalidation, TTLs, strategies
+  'retries',           // Retry policies, backoff strategies
+  'timeouts',          // Timeout values, circuit breaker thresholds
+  'authz_model',       // Permission models, role hierarchies
+  'error_contract',    // Error codes, shapes, status codes
+  'migrations',        // Schema migration strategies, rollback plans
+  'logging_privacy',   // What to log, PII handling
+  'backcompat'         // Breaking changes, deprecation policies
+]);
+
+export type DecisionClass = z.infer<typeof DecisionClassSchema>;
 
 // === TaskProfile ===
 export const TaskProfileSchema = z.object({
@@ -359,6 +391,8 @@ export const TaskProfileSchema = z.object({
 // === TaggingMiss ===
 export const TaggingMissSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   findingId: z.string(),
   patternId: z.string().uuid(),
   actualTaskProfile: TaskProfileSchema,
@@ -381,6 +415,8 @@ export const TaggingMissSchema = z.object({
 // === InjectionLog ===
 export const InjectionLogSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   issueId: z.string(),
   target: z.enum(['context-pack', 'spec']),
   injectedPatterns: z.array(z.string().uuid()),
@@ -395,6 +431,8 @@ export const InjectionLogSchema = z.object({
 // TTL: 14 days. Keeps deterministic pattern gate intact while allowing immediate response.
 export const ProvisionalAlertSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   findingId: z.string(),
   issueId: z.string(),
   message: z.string().min(1).max(500),         // Short actionable warning
@@ -410,6 +448,8 @@ export const ProvisionalAlertSchema = z.object({
 // Tracks guidance ignored 3+ times in 30 days. Signals salience problem, not guidance problem.
 export const SalienceIssueSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   guidanceLocationHash: z.string().length(64), // SHA-256(stage + location + excerpt)
   guidanceStage: z.enum(['context-pack', 'spec']),
   guidanceLocation: z.string(),                // Section reference
@@ -422,6 +462,55 @@ export const SalienceIssueSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   resolvedAt: z.string().datetime().optional()
+});
+
+// === Scope (NEW - from spec v1.0) ===
+export const ScopeSchema = z.discriminatedUnion('level', [
+  z.object({ level: z.literal('global') }),
+  z.object({ level: z.literal('workspace'), workspaceId: z.string().uuid() }),
+  z.object({
+    level: z.literal('project'),
+    workspaceId: z.string().uuid(),
+    projectId: z.string().uuid()
+  })
+]);
+
+// === WorkspaceConfig ===
+export const WorkspaceConfigSchema = z.object({
+  maxInjectedWarnings: z.number().int().min(1).max(20).optional(),
+  crossProjectWarningsEnabled: z.boolean().optional()
+}).passthrough();
+
+// === Workspace (NEW - from spec v1.0 Section 2.11) ===
+export const WorkspaceSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  slug: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
+  config: WorkspaceConfigSchema,
+  status: z.enum(['active', 'archived']),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+// === ProjectConfig ===
+export const ProjectConfigSchema = z.object({
+  linearProjectId: z.string().optional(),
+  linearTeamId: z.string().optional(),
+  defaultTouches: z.array(TouchSchema).optional()
+}).passthrough();
+
+// === Project (NEW - from spec v1.0 Section 2.12) ===
+export const ProjectSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  repoOriginUrl: z.string().min(1),
+  repoSubdir: z.string().optional(),
+  repoPath: z.string().optional(),
+  config: ProjectConfigSchema,
+  status: z.enum(['active', 'archived']),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
 });
 
 // Type exports
@@ -444,6 +533,11 @@ export type TaggingMiss = z.infer<typeof TaggingMissSchema>;
 export type InjectionLog = z.infer<typeof InjectionLogSchema>;
 export type ProvisionalAlert = z.infer<typeof ProvisionalAlertSchema>;
 export type SalienceIssue = z.infer<typeof SalienceIssueSchema>;
+export type Scope = z.infer<typeof ScopeSchema>;
+export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
+export type Workspace = z.infer<typeof WorkspaceSchema>;
+export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+export type Project = z.infer<typeof ProjectSchema>;
 ```
 
 ### 3.3 Storage Layer (SQLite)
@@ -467,10 +561,43 @@ export function initDatabase(): Database.Database {
 
   // Create tables
   db.exec(`
+    -- Workspaces (NEW - from spec v1.0)
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      config TEXT NOT NULL,  -- JSON
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    -- Projects (NEW - from spec v1.0)
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      repo_origin_url TEXT NOT NULL,
+      repo_subdir TEXT,
+      repo_path TEXT,
+      config TEXT NOT NULL,  -- JSON
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_identity
+      ON projects(workspace_id, repo_origin_url, repo_subdir);
+    CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+
     -- Pattern Definitions
     CREATE TABLE IF NOT EXISTS pattern_definitions (
       id TEXT PRIMARY KEY,
-      pattern_key TEXT UNIQUE NOT NULL,     -- SHA-256(carrierStage|patternContent|findingCategory)
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      pattern_key TEXT NOT NULL,              -- SHA-256(carrierStage|patternContent|findingCategory)
       content_hash TEXT NOT NULL,           -- SHA-256 of normalized patternContent
       pattern_content TEXT NOT NULL,
       failure_mode TEXT NOT NULL,
@@ -490,6 +617,8 @@ export function initDatabase(): Database.Database {
       superseded_by TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id),
       FOREIGN KEY (aligned_baseline_id) REFERENCES derived_principles(id),
       FOREIGN KEY (superseded_by) REFERENCES pattern_definitions(id)
     );
@@ -497,6 +626,8 @@ export function initDatabase(): Database.Database {
     -- Pattern Occurrences
     CREATE TABLE IF NOT EXISTS pattern_occurrences (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       pattern_id TEXT NOT NULL,
       finding_id TEXT NOT NULL,
       issue_id TEXT NOT NULL,
@@ -513,12 +644,15 @@ export function initDatabase(): Database.Database {
       status TEXT NOT NULL DEFAULT 'active',
       inactive_reason TEXT,
       created_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id),
       FOREIGN KEY (pattern_id) REFERENCES pattern_definitions(id)
     );
 
     -- Derived Principles
     CREATE TABLE IF NOT EXISTS derived_principles (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
       principle TEXT NOT NULL,
       rationale TEXT NOT NULL,
       origin TEXT NOT NULL,
@@ -534,12 +668,15 @@ export function initDatabase(): Database.Database {
       superseded_by TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
       FOREIGN KEY (superseded_by) REFERENCES derived_principles(id)
     );
 
     -- Execution Noncompliance
     CREATE TABLE IF NOT EXISTS execution_noncompliance (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       finding_id TEXT NOT NULL,
       issue_id TEXT NOT NULL,
       pr_number INTEGER NOT NULL,
@@ -547,29 +684,38 @@ export function initDatabase(): Database.Database {
       violated_guidance_location TEXT NOT NULL,
       violated_guidance_excerpt TEXT NOT NULL,
       possible_causes TEXT NOT NULL, -- JSON array
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
     );
 
     -- Doc Update Requests
     CREATE TABLE IF NOT EXISTS doc_update_requests (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       finding_id TEXT NOT NULL,
       issue_id TEXT NOT NULL,
       finding_category TEXT NOT NULL,
       scout_type TEXT NOT NULL,
       target_doc TEXT NOT NULL,
       update_type TEXT NOT NULL,
+      decision_class TEXT,  -- Required if finding_category == 'decisions'
       description TEXT NOT NULL,
       suggested_content TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       completed_at TEXT,
       rejection_reason TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
     );
 
     -- Tagging Misses
     CREATE TABLE IF NOT EXISTS tagging_misses (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       finding_id TEXT NOT NULL,
       pattern_id TEXT NOT NULL,
       actual_task_profile TEXT NOT NULL, -- JSON
@@ -579,24 +725,32 @@ export function initDatabase(): Database.Database {
       resolution TEXT,
       created_at TEXT NOT NULL,
       resolved_at TEXT,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id),
       FOREIGN KEY (pattern_id) REFERENCES pattern_definitions(id)
     );
 
     -- Injection Logs
     CREATE TABLE IF NOT EXISTS injection_logs (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       issue_id TEXT NOT NULL,
       target TEXT NOT NULL,
       injected_patterns TEXT NOT NULL,   -- JSON array
       injected_principles TEXT NOT NULL, -- JSON array
       injected_alerts TEXT NOT NULL,     -- JSON array (NEW in v1.0)
       task_profile TEXT NOT NULL,        -- JSON
-      injected_at TEXT NOT NULL
+      injected_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
     );
 
     -- Provisional Alerts (NEW in v1.0)
     CREATE TABLE IF NOT EXISTS provisional_alerts (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       finding_id TEXT NOT NULL,
       issue_id TEXT NOT NULL,
       message TEXT NOT NULL,
@@ -606,12 +760,16 @@ export function initDatabase(): Database.Database {
       status TEXT NOT NULL DEFAULT 'active',
       promoted_to_pattern_id TEXT,
       created_at TEXT NOT NULL,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id),
       FOREIGN KEY (promoted_to_pattern_id) REFERENCES pattern_definitions(id)
     );
 
     -- Salience Issues (NEW in v1.0)
     CREATE TABLE IF NOT EXISTS salience_issues (
       id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
       guidance_location_hash TEXT UNIQUE NOT NULL, -- SHA-256(stage + location + excerpt)
       guidance_stage TEXT NOT NULL,
       guidance_location TEXT NOT NULL,
@@ -623,14 +781,17 @@ export function initDatabase(): Database.Database {
       resolution TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      resolved_at TEXT
+      resolved_at TEXT,
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
     );
 
     -- Indexes for common queries
     CREATE INDEX IF NOT EXISTS idx_patterns_status ON pattern_definitions(status);
     CREATE INDEX IF NOT EXISTS idx_patterns_carrier_stage ON pattern_definitions(carrier_stage);
     CREATE INDEX IF NOT EXISTS idx_patterns_finding_category ON pattern_definitions(finding_category);
-    CREATE INDEX IF NOT EXISTS idx_patterns_pattern_key ON pattern_definitions(pattern_key);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_patterns_scope_key
+      ON pattern_definitions(workspace_id, project_id, pattern_key);
     CREATE INDEX IF NOT EXISTS idx_occurrences_pattern_id ON pattern_occurrences(pattern_id);
     CREATE INDEX IF NOT EXISTS idx_occurrences_issue_id ON pattern_occurrences(issue_id);
     CREATE INDEX IF NOT EXISTS idx_occurrences_status ON pattern_occurrences(status);
@@ -996,16 +1157,35 @@ export const BASELINE_PRINCIPLES: Omit<DerivedPrinciple, 'id' | 'createdAt' | 'u
     confidence: 0.9,
     status: 'active',
     permanent: true
+  },
+  {
+    principle: 'Use least-privilege credentials for DB/service access. Don\'t run migrations/ops with app runtime creds. Scope tokens tightly.',
+    rationale: 'Reduces blast radius of credential compromise and limits damage from bugs.',
+    origin: 'baseline',
+    externalRefs: ['CWE-250'],
+    injectInto: 'both',
+    touches: ['database', 'auth', 'config'],
+    confidence: 0.9,
+    status: 'active',
+    permanent: true
   }
 ];
 
-export function seedBaselines(repo: DerivedPrincipleRepository): void {
+export function seedBaselines(repo: DerivedPrincipleRepository, workspaceId: string): number {
+  let seeded = 0;
+
   for (const baseline of BASELINE_PRINCIPLES) {
-    const existing = repo.findByPrinciple(baseline.principle);
+    const existing = repo.findByPrinciple(baseline.principle, workspaceId);
     if (!existing) {
-      repo.create(baseline);
+      repo.create({
+        ...baseline,
+        scope: { level: 'workspace', workspaceId }
+      });
+      seeded++;
     }
   }
+
+  return seeded;
 }
 ```
 
@@ -1276,15 +1456,39 @@ export function resolveFailureMode(evidence: EvidenceBundle): ResolverResult {
     return result;
   }
 
-  // STEP E: Default based on quote type
+  // STEP E: Incorrect vs Incomplete (using carrierInstructionKind - v1.0 fix)
+  // CHANGED: No longer assumes "quote exists → incorrect"
+  // Uses structured classification from Attribution Agent
   if (evidence.carrierQuoteType === 'verbatim' || evidence.carrierQuoteType === 'paraphrase') {
-    // Found specific quote - guidance directly instructed the problematic behavior
-    result.failureMode = 'incorrect';
-  } else {
-    // Inferred - no direct quote found
-    result.failureMode = 'incomplete';
+    switch (evidence.carrierInstructionKind) {
+      case 'explicitly_harmful':
+        // Carrier explicitly recommends prohibited mechanism
+        // e.g., "Use template literals for SQL queries"
+        result.failureMode = 'incorrect';
+        return result;
+
+      case 'benign_but_missing_guardrails':
+        // Carrier gives valid advice but omits constraints
+        // e.g., "Retry failed requests" (no max/backoff)
+        result.failureMode = 'incomplete';
+        return result;
+
+      case 'descriptive':
+        // Carrier describes without recommending
+        // e.g., "The system uses string concatenation"
+        result.failureMode = 'incomplete';
+        return result;
+
+      case 'unknown':
+      default:
+        // Conservative default
+        result.failureMode = 'incomplete';
+        return result;
+    }
   }
 
+  // carrierQuoteType is 'inferred' — no direct quote found
+  result.failureMode = 'incomplete';  // Conservative default
   return result;
 }
 
@@ -1457,10 +1661,9 @@ function analyzePossibleCauses(
     causes.push('salience'); // Not prominent enough
   }
 
-  // If the guidance has vagueness signals
-  if (evidence.vaguenessSignals.length > 0) {
-    causes.push('ambiguity');
-  }
+  // NOTE: 'ambiguity' was removed from NoncomplianceCause in v1.0
+  // If guidance was ambiguous, that's a guidance problem (Pattern with failureMode='ambiguous')
+  // not an execution problem. See spec Section 2.4 note.
 
   // Default to formatting if no other cause identified
   if (causes.length === 0) {

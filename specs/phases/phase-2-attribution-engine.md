@@ -6,6 +6,76 @@
 
 ---
 
+## Parallel Phase Coordination
+
+**Phase 2 runs in parallel with Phase 3.** Both phases depend on Phase 1 and feed into Phase 4.
+
+### Shared Interfaces (coordinate changes with Phase 3)
+
+| Interface | Defined By | Used By | Notes |
+|-----------|-----------|---------|-------|
+| `PatternDefinition` | Phase 1 | Both | Pattern storage format |
+| `PatternOccurrence` | Phase 1 | Both | Occurrence storage format |
+| `TaskProfile` | Phase 1 | Phase 3 | Injection matching |
+| `Touch` enum | Phase 1 | Both | Tagging taxonomy |
+| `ContextPackMetadata` | Phase 3 (3.1) | Phase 2 (via Phase 4) | Context Pack → injection |
+
+### Coordination Points
+
+1. **patternKey computation**: Phase 2 computes `patternKey` as `SHA-256(carrierStage|patternContent|findingCategory)`. Phase 3's selector uses this key for deduplication. Any change to the algorithm requires coordination.
+
+2. **FindingCategory taxonomy**: Phase 2 uses `mapScoutToCategory()` to classify findings. Phase 3 uses the same categories for injection filtering. Keep the mapping consistent.
+
+3. **Severity levels**: Both phases use the 4-level severity scale (LOW, MEDIUM, HIGH, CRITICAL). Phase 2 assigns severity during attribution; Phase 3 uses it for priority ordering.
+
+### Non-Overlapping Concerns
+
+- Phase 2 focuses on **attribution** (evidence extraction, failure mode classification)
+- Phase 3 focuses on **injection** (warning selection, formatting, token estimation)
+
+These concerns should not overlap. If you're adding code that crosses this boundary, coordinate with the other phase.
+
+---
+
+## Dependencies & Patterns
+
+**Research Document:** [`ai_docs/phase-2-patterns.md`](../../ai_docs/phase-2-patterns.md)
+
+### Key Implementation Patterns
+
+| Pattern | Reference | Usage in Phase 2 |
+|---------|-----------|------------------|
+| **Decision Trees** | Section 1 | `failure-mode-resolver.ts` - Deterministic failureMode classification |
+| **Content Hashing (SHA-256)** | Section 2 | `patternKey`, `carrierExcerptHash`, `originExcerptHash` generation |
+| **Confidence Scoring** | Section 3 | Attribution confidence calculation with weighted scoring |
+| **Enum Classification** | Section 4 | FailureMode, Severity, CarrierQuoteType type safety |
+| **Evidence Extraction** | Section 5 | EvidenceBundle structure, keyword extraction, sliding window search |
+
+### Technology Dependencies
+
+```json
+{
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "better-sqlite3": "^9.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "vitest": "^1.0.0"
+  }
+}
+```
+
+### Critical Design Decisions
+
+1. **Deterministic over ML:** Decision tree uses explicit rules, not trained models
+2. **Full SHA-256 hashes:** Store 64-char hex strings, never truncated
+3. **Weighted scoring:** Start with theoretical values, calibrate with observed data
+4. **String literal unions:** Preferred over enums for FailureMode type safety
+
+---
+
 ## 1. Overview
 
 This phase implements the Attribution Engine that:
@@ -23,10 +93,12 @@ This phase implements the Attribution Engine that:
 - [ ] `src/attribution/evidence-extractor.ts` - EvidenceBundle parsing/validation
 - [ ] `src/attribution/failure-mode-resolver.ts` - Deterministic decision tree
 - [ ] `src/attribution/noncompliance-checker.ts` - ExecutionNoncompliance detection
-- [ ] `src/attribution/orchestrator.ts` - Full attribution orchestration
+- [ ] `src/attribution/orchestrator.ts` - Full attribution orchestration with kill switch integration
+- [ ] `src/services/kill-switch.service.ts` - Kill switch service interface (implementation in Phase 4)
 - [ ] `tests/attribution/failure-mode-resolver.test.ts` - Decision tree tests
 - [ ] `tests/attribution/noncompliance-checker.test.ts` - Noncompliance tests
 - [ ] `tests/attribution/orchestrator.test.ts` - Integration tests
+- [ ] `tests/attribution/kill-switch-integration.test.ts` - Kill switch integration tests
 
 ---
 
@@ -54,7 +126,7 @@ Benefits:
 
 export const ATTRIBUTION_AGENT_SYSTEM_PROMPT = `
 You are the Attribution Agent. Your job is to analyze confirmed PR review findings
-and extract structured evidence about what guidance caused the problem.
+and extract structured evidence about what guidance is correlated with the problem.
 
 ## Your Task
 
@@ -1302,7 +1374,9 @@ export class AttributionOrchestrator {
     const patterns: [RegExp, DecisionClass, number][] = [
       // High-risk classes (per v1.0 spec) - prioritized
       [/\b(authz|authorization|permission|role|rbac|acl|access.?control)\b/i, 'authz_model', 10],
-      [/\b(backcompat|backward.?compat|deprecat|version|breaking.?change|migration)\b/i, 'backcompat', 10],
+      // v1.2 FIX: 'migrations' is separate from 'backcompat' - check more specific 'migrations' first
+      [/\b(schema.?migration|db.?migration|rollback.?plan|migration.?strategy|alter.?table)\b/i, 'migrations', 12],
+      [/\b(backcompat|backward.?compat|deprecat|version|breaking.?change)\b/i, 'backcompat', 10],
       [/\b(pii|gdpr|privacy|mask|redact|sensitive.?data|log.?retention)\b/i, 'logging_privacy', 10],
 
       // Standard classes
@@ -1520,7 +1594,381 @@ Add to package.json:
 
 ---
 
-## 9. Acceptance Criteria
+## 9. Kill Switch Integration
+
+The Attribution Engine integrates with the kill switch mechanism (Spec Section 11) to pause pattern creation when attribution health metrics fall below acceptable thresholds.
+
+### 9.1 Kill Switch State Check
+
+Before creating any pattern, the orchestrator MUST check the current kill switch state:
+
+```typescript
+// File: src/attribution/orchestrator.ts (additions)
+import { KillSwitchService, PatternCreationState } from '../services/kill-switch.service';
+
+// In AttributionOrchestrator constructor:
+private killSwitchService: KillSwitchService;
+
+constructor(db: Database) {
+  // ... existing repo initialization ...
+  this.killSwitchService = new KillSwitchService(db);
+}
+```
+
+### 9.2 Behavior by Kill Switch State
+
+The orchestrator modifies its behavior based on the current kill switch state:
+
+| State | Behavior |
+|-------|----------|
+| `ACTIVE` | Normal operation - create all pattern types (verbatim, paraphrase, inferred) |
+| `INFERRED_PAUSED` | Skip inferred patterns - only create verbatim/paraphrase patterns |
+| `FULLY_PAUSED` | Log-only mode - no pattern creation, but continue logging attribution attempts |
+
+### 9.3 Updated Attribution Flow
+
+```typescript
+// File: src/attribution/orchestrator.ts (updated attributeFinding method)
+
+async attributeFinding(input: AttributionInput): Promise<AttributionResult> {
+  // Step 0: Check kill switch state FIRST
+  const killSwitchStatus = this.killSwitchService.getStatus({
+    workspaceId: input.workspaceId,
+    projectId: input.projectId
+  });
+
+  // Step 1: Run Attribution Agent to extract evidence
+  const evidence = await runAttributionAgent({
+    finding: input.finding,
+    contextPack: input.contextPack.content,
+    spec: input.spec.content
+  });
+
+  // Step 2: Resolve failureMode deterministically
+  const resolverResult = resolveFailureMode(evidence);
+
+  // Step 3: Check for ExecutionNoncompliance (always runs regardless of kill switch)
+  const noncomplianceCheck = checkForNoncompliance({
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    evidence,
+    resolvedFailureMode: resolverResult.failureMode,
+    contextPack: input.contextPack.content,
+    spec: input.spec.content,
+    finding: input.finding
+  });
+
+  if (noncomplianceCheck.isNoncompliance) {
+    // ... existing noncompliance handling ...
+    // Record outcome after noncompliance
+    this.recordAndEvaluate(input, evidence, false);
+    return { type: 'noncompliance', /* ... */ };
+  }
+
+  // Step 4: Kill switch state handling for pattern creation
+  const patternCreationResult = await this.handlePatternCreationWithKillSwitch(
+    input, evidence, resolverResult, killSwitchStatus.state
+  );
+
+  // Step 5: Record attribution outcome and evaluate health
+  this.recordAndEvaluate(input, evidence, patternCreationResult.patternCreated);
+
+  return patternCreationResult.result;
+}
+
+/**
+ * Handle pattern creation based on kill switch state.
+ * Returns whether a pattern was created and the attribution result.
+ */
+private async handlePatternCreationWithKillSwitch(
+  input: AttributionInput,
+  evidence: EvidenceBundle,
+  resolverResult: ReturnType<typeof resolveFailureMode>,
+  killSwitchState: PatternCreationState
+): Promise<{ patternCreated: boolean; result: AttributionResult }> {
+  // FULLY_PAUSED: Log-only mode, no pattern creation
+  if (killSwitchState === PatternCreationState.FULLY_PAUSED) {
+    console.log('[AttributionOrchestrator] Kill switch FULLY_PAUSED - logging only', {
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      findingId: input.finding.id,
+      carrierQuoteType: evidence.carrierQuoteType,
+      failureMode: resolverResult.failureMode
+    });
+
+    return {
+      patternCreated: false,
+      result: {
+        type: 'doc_update_only',
+        resolverResult: {
+          failureMode: resolverResult.failureMode,
+          reasoning: `[KILL_SWITCH:FULLY_PAUSED] ${resolverResult.reasoning}`
+        }
+      }
+    };
+  }
+
+  // INFERRED_PAUSED: Skip inferred patterns, only create verbatim/paraphrase
+  if (killSwitchState === PatternCreationState.INFERRED_PAUSED) {
+    if (evidence.carrierQuoteType === 'inferred') {
+      console.log('[AttributionOrchestrator] Kill switch INFERRED_PAUSED - skipping inferred pattern', {
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        findingId: input.finding.id
+      });
+
+      return {
+        patternCreated: false,
+        result: {
+          type: 'doc_update_only',
+          resolverResult: {
+            failureMode: resolverResult.failureMode,
+            reasoning: `[KILL_SWITCH:INFERRED_PAUSED] ${resolverResult.reasoning}`
+          }
+        }
+      };
+    }
+    // Fall through to normal pattern creation for verbatim/paraphrase
+  }
+
+  // ACTIVE (or INFERRED_PAUSED with verbatim/paraphrase): Normal pattern creation
+  // Continue with existing pattern creation logic...
+
+  // Handle Decisions findings specially
+  if (input.finding.scoutType === 'decisions') {
+    const result = await this.handleDecisionsFinding(input, evidence, resolverResult);
+    return { patternCreated: result.type === 'pattern', result };
+  }
+
+  // Check for ProvisionalAlert
+  const provisionalAlert = this.checkAndCreateProvisionalAlert(
+    input, evidence, resolverResult
+  );
+
+  if (provisionalAlert) {
+    return {
+      patternCreated: false,
+      result: {
+        type: 'provisional_alert',
+        provisionalAlert,
+        resolverResult: {
+          failureMode: resolverResult.failureMode,
+          reasoning: resolverResult.reasoning
+        }
+      }
+    };
+  }
+
+  // Create pattern and occurrence
+  const { pattern, occurrence } = await this.createPatternAndOccurrence(
+    input, evidence, resolverResult
+  );
+
+  return {
+    patternCreated: true,
+    result: {
+      type: 'pattern',
+      pattern,
+      occurrence,
+      resolverResult: {
+        failureMode: resolverResult.failureMode,
+        reasoning: resolverResult.reasoning
+      }
+    }
+  };
+}
+```
+
+### 9.4 Recording Attribution Outcomes
+
+After each attribution attempt, the orchestrator records the outcome for health metric calculation:
+
+```typescript
+/**
+ * Record attribution outcome and trigger health evaluation.
+ * Called after every attribution attempt, regardless of result.
+ */
+private recordAndEvaluate(
+  input: AttributionInput,
+  evidence: EvidenceBundle,
+  patternCreated: boolean
+): void {
+  const scope = {
+    workspaceId: input.workspaceId,
+    projectId: input.projectId
+  };
+
+  // Record outcome for metrics
+  this.killSwitchService.recordAttributionOutcome(scope, {
+    issueKey: input.finding.issueId,
+    carrierQuoteType: evidence.carrierQuoteType,
+    patternCreated,
+    injectionOccurred: false,    // Injection happens in Phase 3
+    recurrenceObserved: null     // Will be updated after future PR reviews
+  });
+
+  // Evaluate health to check if kill switch state should change
+  this.killSwitchService.evaluateHealth(scope);
+}
+```
+
+### 9.5 Kill Switch Service Interface
+
+**OWNERSHIP NOTE:** Phase 2 defines ONLY the *interface contract* that the orchestrator depends on.
+Phase 4 owns the *full implementation* of KillSwitchService including:
+- Health metrics storage and calculation
+- State transition logic
+- CLI commands (status, health, pause, resume)
+- Weekly health check scheduled task
+
+For the implementation, see: `specs/phases/phase-4-integration.md` Section 13.
+
+The orchestrator depends on a KillSwitchService with this interface:
+
+```typescript
+// File: src/services/kill-switch.service.ts (interface for Phase 4)
+
+export enum PatternCreationState {
+  ACTIVE = 'active',
+  INFERRED_PAUSED = 'inferred_paused',
+  FULLY_PAUSED = 'fully_paused'
+}
+
+export interface Scope {
+  workspaceId: string;
+  projectId: string;
+}
+
+export interface KillSwitchStatus {
+  state: PatternCreationState;
+  reason: string | null;
+  enteredAt: Date | null;
+  autoResumeAt: Date | null;
+}
+
+export interface AttributionOutcome {
+  issueKey: string;
+  carrierQuoteType: 'verbatim' | 'paraphrase' | 'inferred';
+  patternCreated: boolean;
+  injectionOccurred: boolean;
+  recurrenceObserved: boolean | null;
+}
+
+export interface KillSwitchService {
+  getStatus(scope: Scope): KillSwitchStatus;
+  recordAttributionOutcome(scope: Scope, outcome: AttributionOutcome): void;
+  evaluateHealth(scope: Scope): void;
+}
+```
+
+### 9.6 Updated Deliverables Checklist
+
+Add to Section 2 deliverables:
+
+- [ ] `src/services/kill-switch.service.ts` - Kill switch service interface (implementation in Phase 4)
+- [ ] `tests/attribution/kill-switch-integration.test.ts` - Kill switch integration tests
+
+### 9.7 Kill Switch Integration Tests
+
+```typescript
+// File: tests/attribution/kill-switch-integration.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AttributionOrchestrator } from '../../src/attribution/orchestrator';
+import { PatternCreationState } from '../../src/services/kill-switch.service';
+
+describe('Kill Switch Integration', () => {
+  let orchestrator: AttributionOrchestrator;
+  let mockKillSwitchService: any;
+
+  beforeEach(() => {
+    mockKillSwitchService = {
+      getStatus: vi.fn(),
+      recordAttributionOutcome: vi.fn(),
+      evaluateHealth: vi.fn()
+    };
+    // ... setup orchestrator with mock ...
+  });
+
+  describe('ACTIVE state', () => {
+    it('creates patterns normally', async () => {
+      mockKillSwitchService.getStatus.mockReturnValue({
+        state: PatternCreationState.ACTIVE,
+        reason: null
+      });
+
+      const result = await orchestrator.attributeFinding(mockInput);
+
+      expect(result.type).toBe('pattern');
+      expect(mockKillSwitchService.recordAttributionOutcome).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ patternCreated: true })
+      );
+    });
+  });
+
+  describe('INFERRED_PAUSED state', () => {
+    it('skips inferred patterns', async () => {
+      mockKillSwitchService.getStatus.mockReturnValue({
+        state: PatternCreationState.INFERRED_PAUSED,
+        reason: 'inferredRatio > 0.40'
+      });
+
+      // Mock evidence with inferred quote type
+      const result = await orchestrator.attributeFinding(mockInputWithInferred);
+
+      expect(result.type).toBe('doc_update_only');
+      expect(result.resolverResult?.reasoning).toContain('KILL_SWITCH:INFERRED_PAUSED');
+    });
+
+    it('creates verbatim patterns normally', async () => {
+      mockKillSwitchService.getStatus.mockReturnValue({
+        state: PatternCreationState.INFERRED_PAUSED,
+        reason: 'inferredRatio > 0.40'
+      });
+
+      // Mock evidence with verbatim quote type
+      const result = await orchestrator.attributeFinding(mockInputWithVerbatim);
+
+      expect(result.type).toBe('pattern');
+    });
+  });
+
+  describe('FULLY_PAUSED state', () => {
+    it('logs only, no pattern creation', async () => {
+      mockKillSwitchService.getStatus.mockReturnValue({
+        state: PatternCreationState.FULLY_PAUSED,
+        reason: 'attributionPrecisionScore < 0.40'
+      });
+
+      const result = await orchestrator.attributeFinding(mockInput);
+
+      expect(result.type).toBe('doc_update_only');
+      expect(result.resolverResult?.reasoning).toContain('KILL_SWITCH:FULLY_PAUSED');
+      expect(mockKillSwitchService.recordAttributionOutcome).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ patternCreated: false })
+      );
+    });
+  });
+
+  describe('Health evaluation', () => {
+    it('evaluates health after every attribution', async () => {
+      mockKillSwitchService.getStatus.mockReturnValue({
+        state: PatternCreationState.ACTIVE,
+        reason: null
+      });
+
+      await orchestrator.attributeFinding(mockInput);
+
+      expect(mockKillSwitchService.evaluateHealth).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+```
+
+---
+
+## 10. Acceptance Criteria
 
 Phase 2 is complete when:
 
@@ -1530,17 +1978,28 @@ Phase 2 is complete when:
 4. [ ] Decisions findings create DocUpdateRequest
 5. [ ] Pattern deduplication works via patternKey
 6. [ ] Baseline alignment detected for inferred patterns
-7. [ ] All tests pass
+7. [ ] Kill switch state check before pattern creation
+8. [ ] INFERRED_PAUSED skips inferred patterns only
+9. [ ] FULLY_PAUSED logs only, no pattern creation
+10. [ ] Attribution outcomes recorded after each attempt
+11. [ ] Health evaluation triggered after recording outcomes
+12. [ ] All tests pass
 
 ---
 
-## 10. Handoff to Phase 4
+## 11. Handoff to Phase 4
 
 After Phase 2, the following are available:
 
-- `AttributionOrchestrator` - Full attribution flow
+- `AttributionOrchestrator` - Full attribution flow with kill switch integration
 - `runAttributionAgent()` - Extracts EvidenceBundle
 - `resolveFailureMode()` - Deterministic failureMode
 - `checkForNoncompliance()` - ExecutionNoncompliance detection
+- `KillSwitchService` interface - For Phase 4 to implement
+- `recordAndEvaluate()` - Records outcomes and triggers health evaluation
 
-Phase 4 (Integration) will wire the orchestrator into the PR Review workflow.
+Phase 4 (Integration) will:
+1. Wire the orchestrator into the PR Review workflow
+2. Implement the full `KillSwitchService` with health metrics storage
+3. Implement health threshold evaluation and state transitions
+4. Add observability logging for kill switch state changes

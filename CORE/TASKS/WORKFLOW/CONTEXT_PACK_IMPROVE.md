@@ -52,7 +52,7 @@ Inaccurate context pack → inaccurate spec → failed implementation. The failu
 
 3. **Read the existing Context Pack**
    ```bash
-   python "$REPO_ROOT/project-management/tools/linear.py" document get <document-id>
+   # Use /linear-tool skill for Linear operations
    ```
 
 ---
@@ -61,11 +61,10 @@ Inaccurate context pack → inaccurate spec → failed implementation. The failu
 
 ```bash
 # Swap labels
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --remove-label agent_ready
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --add-label agent_working
+# Use /linear-tool skill for Linear operations
 
 # Comment to claim
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Improving Context Pack based on review feedback."
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -114,13 +113,12 @@ Create an improved version of the Context Pack that addresses ALL the gaps from 
 **Linear is the source of truth.** Update the existing document (don't create duplicates).
 
 1. **Find the document ID** from the `**Context Pack:**` URL in the Linear comments:
-   - Example URL: `https://linear.app/content-foundry/document/con-123-context-pack-b61c234e4b40`
+   - Example URL: `https://linear.app/<CONFIG>Linear workspace</CONFIG>/document/con-123-context-pack-b61c234e4b40`
    - The document ID is the last segment: `b61c234e4b40`
 
 2. **Update the document:**
    ```bash
-   python "$REPO_ROOT/project-management/tools/linear.py" document update <document-id> \
-     --content-file /tmp/context-pack-CON-XXX-improved.md
+   # Use /linear-tool skill for Linear operations
    ```
 
 The document URL stays the same — no need to update references in comments.
@@ -162,30 +160,16 @@ After improvement, move directly to Ready for Spec (no re-review needed):
 
 ```bash
 # Move to Ready for Spec
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --state "Ready for Spec"
+# Use /linear-tool skill for Linear operations
 
 # Remove the improvement label
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --remove-label needs_improve_context_pack
+# Use /linear-tool skill for Linear operations
 
 # Swap working → ready
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --remove-label agent_working
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --add-label agent_ready
+# Use /linear-tool skill for Linear operations
 
 # Comment noting completion
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Context Pack improved.
-
-**Context Pack:** <URL>
-
-**Improvements made:**
-1. <improvement 1>
-2. <improvement 2>
-
-**Gaps addressed:**
-- <gap from review → how it was addressed>
-
-Ready for spec work.
-
-**Next steps:** Run \`/checkout CON-XXX\` to start spec work."
+# Use /linear-tool skill for Linear operations
 ```
 
 ---
@@ -227,14 +211,7 @@ After improvement:
 If gaps require human decisions that you cannot resolve:
 
 ```bash
-python "$REPO_ROOT/project-management/tools/linear.py" issue update CON-XXX --add-label human_input
-python "$REPO_ROOT/project-management/tools/linear.py" issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Context Pack improvement blocked.
-
-**Requires human decision:**
-- <question 1>
-- <question 2>
-
-Please resolve these questions, then run \`/checkout CON-XXX\` to continue."
+# Use /linear-tool skill for Linear operations
 ```
 
 Do NOT change state until human resolves the questions.

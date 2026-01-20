@@ -78,12 +78,9 @@ git fetch origin && git checkout <pr-branch-name>
 # Get PR file list
 gh pr diff <pr-number> --name-only
 
-# Swap labels
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_ready
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_working
-
-# Comment
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: Starting PR review."
+# Use /linear-tool skill for Linear operations
+# - Swap labels (remove agent_ready, add agent_working)
+# - Comment: "Starting PR review."
 ```
 
 ---
@@ -381,34 +378,19 @@ If you overrode any judge:
 
 **Linear:**
 ```bash
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: PR review complete — changes requested.
-
-**PR:** <GitHub PR URL>
-**Verdict:** FAIL
-**Issues:** X code fixes, Y doc updates required
-
-See PR comments for full review.
-
-**Next steps:** Run \`/checkout CON-XXX --fix\` to fix the issues."
-
-python project-management/tools/linear.py issue update CON-XXX --add-label code-review-failed
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+# Use /linear-tool skill for Linear operations
+# - Comment: "PR review complete - changes requested. PR: <URL>. Verdict: FAIL. Issues: X code fixes, Y doc updates required. See PR comments for full review. Next steps: Run /checkout CON-XXX --fix to fix the issues."
+# - Add label: code-review-failed
+# - Swap labels (remove agent_working, add agent_ready)
 ```
 
 ### Step 6.3: If Approved (PASS)
 
 **Linear:**
 ```bash
-python project-management/tools/linear.py issue comment CON-XXX "Agent [Model Name] $AGENT_NAME: PR review passed.
-
-**PR:** <GitHub PR URL>
-**Verdict:** PASS
-
-Ready for human to move to Review Passed."
-
-python project-management/tools/linear.py issue update CON-XXX --remove-label agent_working
-python project-management/tools/linear.py issue update CON-XXX --add-label agent_ready
+# Use /linear-tool skill for Linear operations
+# - Comment: "PR review passed. PR: <URL>. Verdict: PASS. Ready for human to move to Review Passed."
+# - Swap labels (remove agent_working, add agent_ready)
 ```
 
 **DO NOT move the issue to Review Passed.** The human will do this after verifying.
