@@ -85,5 +85,10 @@
     "cli"
   ],
   "author": "Tom Belfort",
-  "license": "AGPL-3.0-or-later"
+  "license": "MIT",
+  "homepage": "https://getfalcon.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tbelfort/falcon-ai.git"
+  }
 }

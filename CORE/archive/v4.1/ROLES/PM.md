@@ -341,7 +341,7 @@ python "$REPO_ROOT/project-management/tools/linear.py" document list --project f
 
 ### Teams
 
-- **CON** (content-foundry) - Primary team
+- **PROJ** (your-team) - Primary team
 
 ### Workflow States
 
@@ -398,7 +398,7 @@ python "$REPO_ROOT/project-management/tools/linear.py" document list --project f
 5. Add dependency comment for clarity
 6. Update source markdown with Linear links:
    ```
-   ADDED: [CON-XXX](https://linear.app/content-foundry/issue/CON-XXX) - Title
+   ADDED: [CON-XXX](https://linear.app/your-team/issue/CON-XXX) - Title
    ```
 
 ---

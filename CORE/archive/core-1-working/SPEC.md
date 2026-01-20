@@ -433,7 +433,7 @@ This returns a URL like `https://linear.app/skyla/document/...` — save it for 
 
 ```bash
 # Get the document ID from the existing Linear URL (the ID is the last part of the URL)
-# Example: https://linear.app/content-foundry/document/con-123-spec-title-b61c234e4b40
+# Example: https://linear.app/your-team/document/con-123-spec-title-b61c234e4b40
 # The ID is: b61c234e4b40
 
 # Update the document with new content

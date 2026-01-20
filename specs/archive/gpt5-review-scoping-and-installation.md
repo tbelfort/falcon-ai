@@ -952,7 +952,7 @@ After your review:
 
 ## Reference: Current Spec Location
 
-All specs are in: `/Users/tbelfort/Projects/falcon-ai/specs/`
+All specs are in: `./specs/`
 
 Key files:
 - `spec-pattern-attribution-v1.0.md` (main spec)

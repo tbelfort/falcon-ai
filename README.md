@@ -2,6 +2,8 @@
 
 **An agentic software engineering framework with empirical guardrails.**
 
+**Website:** [getfalcon.dev](https://getfalcon.dev)
+
 Falcon-AI is a complete framework for multi-agent software development. It provides structured workflows for design, implementation, and continuous improvement — with a feedback loop that learns from mistakes and prevents them from recurring.
 
 ---
@@ -537,26 +539,12 @@ npm run test:run   # Single run
 
 ---
 
-## Acknowledgments
+## Credits
 
-**Inspired by [say-your-harmony](https://github.com/say828/say-your-harmony)** — a self-improving AI agent orchestration system that pioneered the concept of closing the feedback loop through meta-analysis and pattern learning.
-
-While say-your-harmony focuses on structural patterns (workflow efficiency, task parallelization, decision capture), falcon-ai takes a different approach:
-- **Failure attribution** instead of efficiency patterns
-- **Automatic injection** instead of manual pattern review
-- **Deterministic classification** instead of LLM-generated pattern names
-- **SQLite storage** instead of JSON files
-
-The core insight — that agents can learn from past sessions to improve future performance — came from say-your-harmony's research. Falcon-AI builds on this by focusing specifically on preventing recurring mistakes through evidence-based failure attribution.
+The pattern learning and feedback loop concepts in this project were inspired by [say-your-harmony](https://github.com/say828/say-your-harmony).
 
 ---
 
 ## License
 
-**AGPL-3.0** — See [LICENSE](LICENSE) for details.
-
-This means:
-- You can use, modify, and distribute this software
-- If you modify it, you must release your modifications under AGPL-3.0
-- If you run a modified version as a network service (SaaS), users must be able to obtain the source code
-- Commercial use is allowed, but copyleft applies
+**MIT** — See [LICENSE](LICENSE) for details.
