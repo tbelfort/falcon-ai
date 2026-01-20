@@ -49,6 +49,20 @@ function validateInput(value: string, fieldName: string): void {
   }
 }
 
+/**
+ * Validate slug format.
+ * Must contain only lowercase alphanumeric, underscores, and hyphens.
+ * Must contain at least one alphanumeric character.
+ */
+function validateSlug(slug: string, fieldName: string): void {
+  if (!/^[a-z0-9_-]+$/.test(slug)) {
+    throw new Error(`${fieldName} must contain only lowercase letters, numbers, underscores, and hyphens`);
+  }
+  if (!/[a-z0-9]/.test(slug)) {
+    throw new Error(`${fieldName} must contain at least one alphanumeric character`);
+  }
+}
+
 export const initCommand = new Command('init')
   .description('Initialize falcon-ai in the current repository')
   .option('-w, --workspace <slug>', 'Use existing workspace (by slug)')
@@ -150,7 +164,7 @@ export const initCommand = new Command('init')
       workspaceName = workspace.name;
     } else {
       // Create new workspace (auto-generate)
-      const defaultSlug = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const defaultSlug = projectName.toLowerCase().replace(/[^a-z0-9_]/g, '-');
       workspaceSlug = defaultSlug;
       workspaceName = projectName;
       workspaceId = randomUUID();
@@ -163,6 +177,15 @@ export const initCommand = new Command('init')
       if (existingWorkspace) {
         // Append random suffix (8 chars for better collision resistance)
         workspaceSlug = `${defaultSlug}-${randomUUID().slice(0, 8)}`;
+      }
+
+      // Validate generated slug
+      try {
+        validateSlug(workspaceSlug, 'Generated workspace slug');
+      } catch (e) {
+        console.error(`Error: ${(e as Error).message}`);
+        console.error('Try providing a project name with alphanumeric characters.');
+        process.exit(1);
       }
 
       const now = new Date().toISOString();

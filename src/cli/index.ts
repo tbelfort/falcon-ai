@@ -7,8 +7,8 @@
 
 import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
-import { workspaceCommand } from './commands/workspace.js';
-import { projectCommand } from './commands/project.js';
+import { workspaceCommand, workspacesCommand } from './commands/workspace.js';
+import { projectCommand, projectsCommand } from './commands/project.js';
 import { statusCommand } from './commands/status.js';
 import { doctorCommand } from './commands/doctor.js';
 import { healthCommand } from './commands/health.js';
@@ -25,7 +25,9 @@ program
 
 program.addCommand(initCommand);
 program.addCommand(workspaceCommand);
+program.addCommand(workspacesCommand);
 program.addCommand(projectCommand);
+program.addCommand(projectsCommand);
 program.addCommand(statusCommand);
 program.addCommand(doctorCommand);
 program.addCommand(healthCommand);
