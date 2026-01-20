@@ -1,9 +1,19 @@
-# Pattern-Based Guardrail System Specification v1.0
+# Pattern-Based Guardrail System Specification v1.1
 
 **Status:** Final Draft
-**Last Updated:** 2026-01-19
+**Last Updated:** 2026-01-20
 **Authors:** Human + Claude Opus 4.5 + GPT-5 Pro review
-**Previous Version:** v0.9
+**Previous Version:** v1.0
+
+---
+
+## Changelog from v1.0
+
+| Issue | Fix | Section |
+|-------|-----|---------|
+| Git remote required for `falcon init` blocked local-only repos | Made git remote optional; use `local:<path-hash>` for repos without remotes | 1.9, 2.12 |
+| Multi-dev sync implied but not implemented | Clarified v1 is single-developer model; all data stored locally | 2.12 |
+| `repoOriginUrl` description implied remote required | Updated to allow `local:` prefix for local-only projects | 2.12 |
 
 ---
 
@@ -998,14 +1008,21 @@ interface WorkspaceConfig {
 
 A project corresponds to a code repository (or subdirectory in a monorepo).
 
+**v1 Limitation: Single-Developer Model**
+
+All pattern data is stored locally on the developer's machine (`~/.falcon-ai/db/falcon.db`). Multi-developer sync is planned for a future release. This means:
+- Patterns learned by one developer won't sync to teammates
+- Each developer has their own independent guardrail history
+- Git remote is NOT required — local-only repos work fine
+
 ```typescript
 interface Project {
   id: string;                          // UUID (surrogate key)
   workspaceId: string;                 // FK to Workspace
 
-  // Identity (stable across machines)
+  // Identity
   name: string;                        // Human-readable name (e.g., "falcon-api")
-  repoOriginUrl: string;               // Canonical git remote URL (e.g., "git@github.com:org/repo.git")
+  repoOriginUrl: string;               // Canonical git remote URL OR "local:<path-hash>"
   repoSubdir?: string;                 // For monorepos (e.g., "packages/api")
 
   // Machine-local hint (NOT for identity)
@@ -1042,16 +1059,22 @@ This ensures:
 - Same repo URL + different subdirs = different projects (monorepo)
 - Registration is idempotent (upsert by identity)
 
-**Stable Identity:**
+**Project Identity:**
 
 ```typescript
-// Canonicalize URL for consistent matching
+// For repos with git remote:
 function canonicalizeRepoUrl(url: string): string {
   // Convert HTTPS to SSH format for consistency
-  // git@github.com:org/repo.git → git@github.com:org/repo.git
-  // https://github.com/org/repo → git@github.com:org/repo.git
-  // Remove trailing .git if missing
-  // Lowercase hostname
+  // git@github.com:org/repo.git → github.com/org/repo
+  // https://github.com/org/repo → github.com/org/repo
+  // Remove protocol, trailing .git, lowercase hostname
+}
+
+// For repos without git remote (local-only):
+function generateLocalIdentifier(gitRoot: string): string {
+  // SHA256 hash of absolute path, truncated to 16 chars
+  // Returns: "local:a1b2c3d4e5f6..."
+  // Deterministic: same path = same identifier
 }
 ```
 

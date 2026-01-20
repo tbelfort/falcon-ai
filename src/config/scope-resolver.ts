@@ -4,10 +4,11 @@
  * Resolves the current workspace and project context using:
  * 1. .falcon/config.yaml (authoritative)
  * 2. Environment variables (for CI)
- * 3. Git remote origin URL lookup
+ * 3. Git remote origin URL lookup (or local path identifier)
  */
 
 import { execSync } from 'child_process';
+import { createHash } from 'crypto';
 import path from 'path';
 import { findConfigPath, loadConfig } from './loader.js';
 import { canonicalizeGitUrl } from './url-utils.js';
@@ -66,18 +67,26 @@ export function resolveScope(): ResolvedScope {
     };
   }
 
-  // STEP 3: Lookup by git remote
-  let repoOriginUrl: string;
+  // STEP 3: Lookup by git remote or local path identifier
+  let canonicalUrl: string;
+  let repoOriginUrl: string | null = null;
+
   try {
     repoOriginUrl = execSync('git remote get-url origin', { encoding: 'utf-8' }).trim();
+    canonicalUrl = canonicalizeGitUrl(repoOriginUrl);
   } catch {
-    throw new ScopeResolutionError(
-      'No .falcon/config.yaml found and no git remote origin.',
-      'no_remote'
-    );
+    // No remote - try local path identifier
+    const gitRoot = getGitRoot();
+    if (!gitRoot) {
+      throw new ScopeResolutionError(
+        'No .falcon/config.yaml found and not in a git repository.',
+        'no_remote'
+      );
+    }
+    const pathHash = createHash('sha256').update(gitRoot).digest('hex').slice(0, 16);
+    canonicalUrl = `local:${pathHash}`;
   }
 
-  const canonicalUrl = canonicalizeGitUrl(repoOriginUrl);
   const repoSubdir = getRepoSubdir();
 
   const db = getDatabase();
@@ -108,17 +117,27 @@ export function resolveScope(): ResolvedScope {
 }
 
 /**
+ * Get the git repository root directory.
+ *
+ * @returns Absolute path to git root, or null if not in a repo
+ */
+function getGitRoot(): string | null {
+  try {
+    return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get the subdirectory within the git repo, if any.
  *
  * @returns Subdirectory path relative to git root, or null if at root
  */
 function getRepoSubdir(): string | null {
-  try {
-    const gitRoot = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
-    const cwd = process.cwd();
-    if (cwd === gitRoot) return null;
-    return path.relative(gitRoot, cwd) || null;
-  } catch {
-    return null;
-  }
+  const gitRoot = getGitRoot();
+  if (!gitRoot) return null;
+  const cwd = process.cwd();
+  if (cwd === gitRoot) return null;
+  return path.relative(gitRoot, cwd) || null;
 }

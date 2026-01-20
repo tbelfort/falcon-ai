@@ -1858,7 +1858,7 @@ export function formatInjectionSummary(result: InjectionResult): string {
  * v1.1: InjectionLog records what was injected into a prompt.
  * Used for tracking, debugging, and adherence analysis.
  *
- * NOTE: This schema matches spec-pattern-attribution-v1.0.md Section 2.8
+ * NOTE: This schema matches spec-pattern-attribution-v1.1.md Section 2.8
  * v1.1: Added workspaceId/projectId for hierarchical scoping
  */
 export interface InjectionLog {
