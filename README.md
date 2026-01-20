@@ -1,59 +1,189 @@
 # Falcon-AI
 
-**A pattern-based guardrail system for multi-agent software development.**
+**An agentic software engineering framework with empirical guardrails.**
 
-Falcon-AI closes the feedback loop that existing systems fail to close: it traces PR review findings back to the guidance that correlated with them, stores patterns with structured evidence (not LLM-generated names), and injects warnings into future agent runs to prevent recurring issues.
-
----
-
-## The Problem
-
-Multi-agent development systems (Claude, GPT, etc.) make mistakes. When a human reviewer catches a security vulnerability or architectural flaw, that knowledge typically dies in the PR comments. The next time an agent works on a similar task, it makes the same mistake again.
-
-**Existing approaches fail because:**
-- They use LLM-generated pattern names that drift and duplicate
-- They extract rich evidence but store only summaries
-- They build query functions that never get called
-- They treat injection as an afterthought
-
-## The Solution
-
-Falcon-AI creates an empirical feedback loop:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                                                                         │
-│   LINEAR ISSUE                                                          │
-│        ↓                                                                │
-│   CONTEXT PACK ←──────────────────────────────────────────────┐         │
-│   (warnings injected)                                         │         │
-│        ↓                                                      │         │
-│   SPEC ←─────────────────────────────────────────────────┐    │         │
-│   (warnings injected)                                    │    │         │
-│        ↓                                                 │    │         │
-│   IMPLEMENTATION → PR REVIEW → ATTRIBUTION ENGINE        │    │         │
-│                                      ↓                   │    │         │
-│                               PATTERN STORED ────────────┴────┘         │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-When a PR review finds an issue:
-1. **Attribution Engine** extracts structured evidence (who said what, where it came from)
-2. **Failure Mode Resolver** deterministically classifies what went wrong (not LLM judgment)
-3. **Pattern** is stored with content hash, provenance chain, and severity
-4. **Future agents** receive contextually-relevant warnings before they make the same mistake
+Falcon-AI is a complete framework for multi-agent software development. It provides structured workflows for design, implementation, and continuous improvement — with a feedback loop that learns from mistakes and prevents them from recurring.
 
 ---
 
-## Key Features
+## The Three Pillars
 
-- **Deterministic classification** - Evidence extraction uses Claude, but failure mode is resolved by decision tree
-- **Append-only history** - Occurrences are never deleted, ensuring full audit trail
-- **Hierarchical scoping** - Patterns can be project-specific or shared across workspaces
-- **Kill switch** - Automatic throttling when attribution health declines
-- **Security bias** - Security patterns always get priority in injection
-- **Token-conscious** - Caps injected warnings at 6 to prevent prompt fatigue
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              FALCON-AI                                       │
+├─────────────────────┬─────────────────────┬─────────────────────────────────┤
+│   1. DESIGN         │   2. IMPLEMENTATION │   3. IMPROVEMENT                │
+│   (to be built)     │   (implemented)     │   (implemented)                 │
+├─────────────────────┼─────────────────────┼─────────────────────────────────┤
+│ Design-Architect    │ Context Pack        │ Pattern Attribution             │
+│ Systems-Architect   │ Spec                │ Baseline Principles             │
+│ Ops-Architect       │ Implement           │ Derived Principles              │
+│ PM (task creation)  │ PR Review           │ Warning Injection               │
+│                     │ Merge               │                                 │
+├─────────────────────┴─────────────────────┴─────────────────────────────────┤
+│                         LINEAR INTEGRATION                                   │
+│            Issues → Tasks → Branches → PRs → Merge → Done                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Design & Architecture *(to be implemented)*
+
+A layered architect system that transforms ideas into implementation-ready specifications:
+
+| Layer | Role | Input | Output |
+|-------|------|-------|--------|
+| 1 | **Design-Architect** | User conversation | `docs/design/` (85% detail) |
+| 2 | **Systems-Architect** | `docs/design/` | `docs/systems/` (100% detail) |
+| 3 | **Ops-Architect** | Running system | `docs/support/` (runbooks, guides) |
+| 4 | **PM** | All `.md` files | Linear tasks with dependencies |
+
+**Why the separation?** Humans produce good docs at 85% detail — the "obvious stuff" experienced devs just know. Agents need 100% pedantic specificity. The Systems-Architect closes that gap.
+
+See [docs/design/vision.md](docs/design/vision.md) for the full design philosophy including project modes (MVP, Refine, Production) and the Constitution.
+
+### 2. Implementation Workflow *(implemented)*
+
+A structured pipeline from task assignment to merged code:
+
+```
+LINEAR ISSUE (Todo)
+       ↓
+   CHECKOUT ─────────────────────────────────────────────┐
+       ↓                                                 │
+   CONTEXT PACK ←── warnings injected ←──────────────┐   │
+       ↓                                             │   │
+   SPEC ←── warnings injected ←──────────────────┐   │   │
+       ↓                                         │   │   │
+   IMPLEMENT                                     │   │   │
+       ↓                                         │   │   │
+   PR REVIEW ─── findings ──→ ATTRIBUTION ───────┴───┘   │
+       ↓                           ↓                     │
+   MERGE                    PATTERN STORED               │
+       ↓                                                 │
+   DONE ←────────────────────────────────────────────────┘
+```
+
+**Workflow stages:**
+
+| Stage | File | Purpose |
+|-------|------|---------|
+| Checkout | `CORE/TASKS/WORKFLOW/CHECKOUT.md` | Claim task, create branch |
+| Context Pack | `CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` | Extract relevant architecture into source-mapped doc |
+| Spec | `CORE/TASKS/WORKFLOW/SPEC.md` | Write implementation spec (detailed enough for zero judgment calls) |
+| Implement | `CORE/TASKS/WORKFLOW/IMPLEMENT.md` | Build from spec, create PR |
+| PR Review | `CORE/TASKS/WORKFLOW/PR_REVIEW.md` | 6 scouts + 6 judges evaluate the PR |
+| Merge | `CORE/TASKS/WORKFLOW/MERGE.md` | PM merges approved PRs |
+
+**Key principle:** Specs leave nothing to decide. If the implementor must make judgment calls, the spec is incomplete.
+
+### 3. Continuous Improvement *(implemented)*
+
+An empirical feedback loop that learns from PR review findings:
+
+```
+PR Review finds issue
+        ↓
+Attribution Engine extracts evidence
+        ↓
+Failure Mode Resolver classifies (deterministic, not LLM)
+        ↓
+Pattern stored with provenance chain
+        ↓
+Future Context Pack/Spec agents receive warnings
+        ↓
+Same mistake prevented
+```
+
+**Two types of guardrails:**
+
+| Type | Scope | Origin | Example |
+|------|-------|--------|---------|
+| **Baseline Principles** | Workspace | Seeded at init (11 security rules) | "Always use parameterized SQL queries" |
+| **Learned Patterns** | Project | Extracted from PR review findings | "Search endpoints need rate limiting" |
+| **Derived Principles** | Workspace | Promoted from recurring patterns | "All public APIs require rate limiting" |
+
+---
+
+## How Patterns Are Learned
+
+### When: During PR Review
+
+The PR Review workflow deploys 6 specialized scouts (security, bugs, spec compliance, etc.) and 6 judges. When a judge confirms a finding:
+
+```typescript
+// Scout finds issue
+{
+  type: 'security',
+  title: 'SQL injection in user search',
+  severity: 'CRITICAL',
+  evidence: { file: 'src/api/users.ts', line: 42 }
+}
+
+// Judge confirms with root cause
+{
+  confirmed: true,
+  rootCause: 'Spec said "build query dynamically" without mentioning parameterization',
+  sourceDoc: 'specs/user-search.md#L15'
+}
+```
+
+### What: Attribution Engine Extracts Evidence
+
+The Attribution Agent (Claude API) extracts structured evidence:
+
+```typescript
+{
+  sourceDocRef: 'specs/user-search.md#L15',
+  citedGuidance: 'Build query dynamically based on filters',
+  actualGuidance: null,  // No parameterization mentioned
+  carrierInstruction: 'Use string interpolation for query building',
+  failureFeatures: {
+    citationPresent: true,
+    mandatoryDocMissing: true,  // B01 baseline not cited
+    vaguenessSignals: ['dynamically']
+  }
+}
+```
+
+### How: Deterministic Failure Mode Resolution
+
+A decision tree (not LLM judgment) classifies what went wrong:
+
+| Mode | Meaning | Decision Path |
+|------|---------|---------------|
+| `incorrect` | Guidance explicitly wrong | Carrier said harmful thing |
+| `incomplete` | Guidance missing constraint | Mandatory doc not cited |
+| `missing_reference` | Didn't cite required doc | Baseline/principle missing |
+| `ambiguous` | Multiple interpretations | Vagueness signals detected |
+| `conflict_unresolved` | Contradictory guidance | Conflict signals present |
+| `synthesis_drift` | Carrier distorted source | Carrier != source meaning |
+
+### Where: Patterns Are Injected
+
+Warnings are injected at two workflow stages:
+
+**1. Context Pack Agent** (`CORE/TASKS/WORKFLOW/CONTEXT_PACK.md`)
+```markdown
+<!-- META-WARNING: NON-CITABLE CONTEXT -->
+The following issues have occurred in similar past work:
+
+### SQL Injection Prevention (CRITICAL)
+**Source:** baseline-B01 | **Relevance:** database, user_input
+
+Always use parameterized queries for SQL. Never interpolate user input.
+```
+
+**2. Spec Agent** (`CORE/TASKS/WORKFLOW/SPEC.md`)
+```markdown
+<!-- META-WARNING: NON-CITABLE CONTEXT -->
+### Rate Limiting Required (HIGH)
+**Source:** pattern-P12 (3 occurrences) | **Relevance:** api, user_input
+
+Search endpoints without rate limiting caused production outage.
+Implement per-user rate limiting with 429 responses.
+```
+
+The warnings are marked non-citable — agents should apply the guidance silently, not reference it in their output.
 
 ---
 
@@ -86,7 +216,7 @@ falcon init
 ```
 
 This creates:
-- `.falcon/config.yaml` - Project configuration
+- `.falcon/config.yaml` — Project configuration
 - Seeds 11 baseline security principles
 - Registers project in falcon-ai database
 
@@ -125,10 +255,6 @@ settings:
 | `ANTHROPIC_API_KEY` | Yes | Claude API access for attribution |
 | `LINEAR_API_KEY` | No | Linear integration for issue tracking |
 
-### Database Location
-
-Falcon-AI stores data in `~/.falcon-ai/db/falcon.db` (SQLite with WAL mode).
-
 ---
 
 ## CLI Usage
@@ -136,171 +262,101 @@ Falcon-AI stores data in `~/.falcon-ai/db/falcon.db` (SQLite with WAL mode).
 ### Core Commands
 
 ```bash
-# Initialize project
-falcon init [--workspace <slug>] [--name <name>]
-
-# Check status
-falcon status
-
-# Run diagnostics
-falcon doctor
-
-# View attribution health metrics
-falcon health
+falcon init                    # Initialize project
+falcon status                  # Show configuration and statistics
+falcon doctor                  # Run diagnostic checks
+falcon health                  # View attribution health metrics
 ```
 
-### Workspace Management
+### Workspace & Project Management
 
 ```bash
-# List all workspaces
-falcon workspace list
+falcon workspace list          # List all workspaces
+falcon workspace create <slug> # Create workspace
+falcon workspace archive <slug> # Archive workspace
 
-# Create workspace
-falcon workspace create my-workspace --name "My Workspace"
-
-# Archive workspace (soft delete)
-falcon workspace archive my-workspace
-```
-
-### Project Management
-
-```bash
-# List projects in current workspace
-falcon project list
-
-# Create project
-falcon project create --name "my-project"
-
-# Delete project
-falcon project delete <project-id>
+falcon project list            # List projects
+falcon project create          # Create project
+falcon project delete <id>     # Delete project
 ```
 
 ### Kill Switch (Safety Controls)
 
 ```bash
-# Pause pattern creation (when attribution quality is poor)
-falcon pause
-
-# Resume pattern creation
-falcon resume
-
-# Current state shown in 'falcon health'
+falcon pause                   # Pause pattern creation
+falcon resume                  # Resume pattern creation
 ```
+
+When attribution precision drops below threshold, the kill switch automatically pauses pattern creation to prevent low-quality patterns from polluting the system.
 
 ---
 
-## How It Works
+## Implementation Workflow Details
 
-### 1. Pattern Attribution
+### Roles
 
-When a PR review finds an issue, falcon-ai traces it back to the guidance that caused it:
+| Role | File | Responsibilities |
+|------|------|------------------|
+| PM | `CORE/ROLES/PM.md` | Merge PRs, sync worktrees, manage Linear |
+| Architect | `CORE/ROLES/ARCHITECT.md` | Technical decisions, architecture |
+| QA | `CORE/ROLES/QA.md` | Test strategy, quality gates |
+| DBA | `CORE/ROLES/DBA.md` | Database design, migrations |
+| Ops | `CORE/ROLES/OPS.md` | Deployment, monitoring, incidents |
+| Doc-Manager | `CORE/ROLES/DOC-MANAGER.md` | Documentation taxonomy |
 
-**Evidence Extraction (Claude API)**
-```
-Finding: "SQL injection vulnerability in user lookup"
-    ↓
-Evidence: {
-  sourceDoc: "api-spec.md",
-  citedGuidance: "Use string concatenation for dynamic queries",
-  actualGuidance: "Use parameterized queries for all user input",
-  carrierInstruction: "Build query using template literals"
-}
-```
+### Agents (PR Review)
 
-**Failure Mode Resolution (Deterministic)**
+The PR Review workflow uses specialized agents:
 
-| Mode | Meaning | Example |
-|------|---------|---------|
-| `incorrect` | Guidance explicitly wrong | "Disable CSRF for speed" |
-| `incomplete` | Guidance missing constraint | Forgot to mention TLS |
-| `missing_reference` | Didn't cite required doc | Ignored auth baseline |
-| `ambiguous` | Multiple interpretations | "Make it fast" |
-| `conflict_unresolved` | Contradictory guidance | Two docs disagree |
-| `synthesis_drift` | Carrier distorted source | Spec misread context |
+**Scouts** (Sonnet — fast, flag potential issues):
+| Agent | File | Focus |
+|-------|------|-------|
+| security | `CORE/agents/pr-scout-security.md` | Security vulnerabilities |
+| bugs | `CORE/agents/pr-scout-bugs.md` | Logic errors, edge cases |
+| spec | `CORE/agents/pr-scout-spec.md` | Spec compliance |
+| tests | `CORE/agents/pr-scout-tests.md` | Test coverage |
+| docs | `CORE/agents/pr-scout-docs.md` | Documentation |
+| decisions | `CORE/agents/pr-scout-decisions.md` | Architectural decisions |
+| adversarial | `CORE/agents/pr-scout-adversarial.md` | Attack vectors |
 
-The resolver uses a decision tree based on evidence features, not LLM judgment. This ensures consistency and debuggability.
+**Judges** (Opus — thorough, evaluate scout findings):
+| Agent | File | Focus |
+|-------|------|-------|
+| security | `CORE/agents/pr-judge-security.md` | Confirm/reject security findings |
+| bugs | `CORE/agents/pr-judge-bugs.md` | Confirm/reject bug findings |
+| ... | ... | ... |
 
-### 2. Pattern Storage
+### Commands
 
-Patterns are stored with:
-- **Structured ID** - Content hash, not LLM-generated name
-- **Provenance chain** - Source doc → Carrier doc → Finding
-- **Evidence bundle** - Full context for debugging
-- **Severity** - CRITICAL, HIGH, MEDIUM, LOW
-- **Touches** - Which system concerns it affects (auth, database, network, etc.)
-
-```typescript
-PatternDefinition {
-  id: "pat_a1b2c3...",
-  sourceDocRef: "specs/api-spec.md#L45",
-  patternContent: "Using string interpolation for SQL queries",
-  failureMode: "incorrect",
-  severity: "CRITICAL",
-  touches: ["database", "user_input"],
-  contentHash: "sha256:abc123...",
-  status: "active"
-}
-```
-
-### 3. Warning Injection
-
-Before agents run, falcon-ai injects relevant warnings:
-
-**Tiered Selection Algorithm:**
-1. **Baseline Principles** (guaranteed slot) - Core security rules
-2. **Derived Principles** (guaranteed slot) - Workspace-level patterns
-3. **Learned Patterns** (remaining slots) - Project-specific findings
-4. **Provisional Alerts** (separate section) - Recent critical findings
-
-**Task Profile Matching:**
-```
-Issue: "Add user search endpoint"
-    ↓
-Profile: {
-  touches: [user_input, database, api],
-  technologies: [typescript, postgresql],
-  taskTypes: [feature]
-}
-    ↓
-Matched Warnings:
-  - B01: SQL parameterization (touches: database, user_input)
-  - P12: Rate limiting on search (touches: api, user_input)
-```
-
-**Formatted Output:**
-```markdown
-<!-- NON-CITABLE: Internal guardrails, do not reference in spec -->
-
-## Warnings
-
-The following issues have occurred in similar past work:
-
-### SQL Injection Prevention
-**Severity:** CRITICAL | **Source:** baseline-B01
-
-Always use parameterized queries for SQL. Never interpolate user input
-into query strings.
-
-**Rationale:** Prevents SQL injection, the most common database vulnerability.
+| Command | File | Purpose |
+|---------|------|---------|
+| checkout | `CORE/commands/checkout.md` | Start work on an issue |
+| doc-review | `CORE/commands/doc-review.md` | Review documentation |
+| merge | `CORE/commands/pm/merge.md` | Merge approved PRs |
+| build_sprint | `CORE/commands/pm/build_sprint.md` | Create sprint from backlog |
+| code-review | `CORE/commands/pm/code-review.md` | Trigger code review |
 
 ---
 
-### Rate Limiting Required
-**Severity:** HIGH | **Source:** pattern-P12 (3 occurrences)
+## Baseline Principles
 
-Search endpoints without rate limiting caused production outage on 2024-01.
-Implement per-user rate limiting with 429 responses.
-```
+Falcon-AI seeds 11 baseline security principles when you initialize:
 
-### 4. Evolution & Learning
+| ID | Principle | Touches | Reference |
+|----|-----------|---------|-----------|
+| B01 | Parameterized SQL queries | database, user_input | CWE-89 |
+| B02 | Validate all external input | user_input | CWE-20 |
+| B03 | Never log secrets or PII | logging, auth | CWE-532 |
+| B04 | Explicit authorization checks | auth, authz | CWE-862 |
+| B05 | Timeouts on network calls | network | — |
+| B06 | Exponential backoff with jitter | network | — |
+| B07 | Idempotency keys for retries | network, database | — |
+| B08 | Size and rate limits | user_input, api | CWE-400 |
+| B09 | Migration rollback strategy | schema | — |
+| B10 | Error contract definition | api | — |
+| B11 | Least-privilege credentials | database, auth, config | CWE-250 |
 
-**Confidence Decay:** Patterns lose confidence over time if not re-observed.
-
-**Salience Detection:** When guidance is repeatedly ignored (3+ occurrences in 30 days), it's flagged for review.
-
-**Provisional Alerts:** CRITICAL findings get immediate injection for 14 days before needing full pattern criteria.
-
-**Kill Switch:** If attribution precision drops below threshold, pattern creation pauses automatically.
+These are always considered for injection based on task profile matching.
 
 ---
 
@@ -350,7 +406,6 @@ const result = beforeSpecAgent(db, {
 // result.warningsMarkdown - formatted warnings
 // result.taskProfile - extracted task metadata
 // result.injectionLogId - audit trail ID
-// result.summary - stats for logging
 ```
 
 ### After PR Review
@@ -377,40 +432,7 @@ await onPRReviewComplete(db, {
 
 // Attribution runs automatically
 // Patterns created/updated as appropriate
-// Adherence tracked for injected warnings
 ```
-
-### Update Adherence
-
-```typescript
-import { updateAdherence } from 'falcon-ai/workflow';
-
-// After reviewing if agent followed the warning
-await updateAdherence(db, occurrenceId, true);  // Agent followed warning
-await updateAdherence(db, occurrenceId, false); // Agent ignored warning
-```
-
----
-
-## Baseline Principles
-
-Falcon-ai seeds 11 baseline security principles (B01-B11) when you initialize:
-
-| ID | Principle | Touches |
-|----|-----------|---------|
-| B01 | Parameterized SQL queries | database, user_input |
-| B02 | Validate all external input | user_input |
-| B03 | Never log secrets or PII | logging, auth |
-| B04 | Explicit authorization checks | auth, authz |
-| B05 | Timeouts on network calls | network |
-| B06 | Exponential backoff with jitter | network |
-| B07 | Idempotency keys for retries | network, database |
-| B08 | Size and rate limits | user_input, api |
-| B09 | Migration rollback strategy | schema |
-| B10 | Error contract definition | api |
-| B11 | Least-privilege credentials | database, auth, config |
-
-These provide foundational guardrails that are always considered for injection.
 
 ---
 
@@ -429,77 +451,71 @@ These provide foundational guardrails that are always considered for injection.
 | ProvisionalAlert | Project | Short-lived alert (14 days) |
 | InjectionLog | Project | Audit trail of injections |
 
-### System Boundaries
+### Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Your Agent System                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Context Pack│  │    Spec     │  │     PR Review       │  │
-│  │    Agent    │  │   Agent     │  │  (Scouts + Judges)  │  │
-│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
-│         │                │                     │             │
-└─────────┼────────────────┼─────────────────────┼─────────────┘
-          │                │                     │
-          ▼                ▼                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       Falcon-AI                              │
-│  ┌─────────────────────┐     ┌─────────────────────────┐    │
-│  │   Injection System  │     │   Attribution Engine    │    │
-│  │  - Task Profiling   │     │  - Evidence Extraction  │    │
-│  │  - Warning Selection│     │  - Failure Resolution   │    │
-│  │  - Formatting       │     │  - Pattern Storage      │    │
-│  └─────────────────────┘     └─────────────────────────┘    │
-│                    ▲                    │                    │
-│                    │                    ▼                    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                    SQLite DB                         │    │
-│  │   patterns, occurrences, principles, injection_logs  │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
+falcon-ai/
+├── CORE/
+│   ├── TASKS/WORKFLOW/      # Workflow stages (checkout, spec, implement, etc.)
+│   ├── ROLES/               # Agent roles (PM, architect, QA, etc.)
+│   ├── agents/              # Specialized agents (scouts, judges)
+│   ├── commands/            # User-invokable commands
+│   └── TEMPLATES/           # Document templates
+│
+├── src/
+│   ├── cli/                 # Command-line interface
+│   ├── storage/             # SQLite database and repositories
+│   ├── schemas/             # Zod validation schemas
+│   ├── attribution/         # Pattern attribution engine
+│   ├── injection/           # Warning injection system
+│   ├── workflow/            # Integration hooks
+│   ├── evolution/           # Learning and decay processors
+│   ├── metrics/             # Observability and reporting
+│   ├── services/            # Business logic (kill switch, etc.)
+│   └── config/              # Configuration loading
+│
+├── docs/
+│   └── design/              # Design philosophy and vision
+│
+└── specs/                   # Implementation specifications
 ```
 
 ---
 
-## Health Monitoring
+## Design Philosophy
 
-### Kill Switch States
+### Constitution (Architectural DNA)
 
-| State | Pattern Creation | Trigger |
-|-------|------------------|---------|
-| `active` | All patterns created | Normal operation |
-| `inferred_paused` | Only verbatim/paraphrase | Precision below 60% |
-| `fully_paused` | No new patterns | Manual or critical failure |
+The Constitution defines immutable principles that govern ALL development decisions:
 
-### Health Metrics
+| Article | Principle |
+|---------|-----------|
+| I | **Determinism Over LLM Judgment** — Pattern attributions use decision trees, not LLM classification |
+| II | **Specs Leave Nothing to Decide** — If implementor must make judgment calls, spec is incomplete |
+| III | **Systems Docs Before Build** — For agent workflows, systems docs written BEFORE implementation |
+| IV | **Append-Only History** — Occurrence records never mutated; mark inactive instead of delete |
+| V | **Separate Belief from Action** — Attribution confidence ≠ injection priority |
 
-```bash
-falcon health
+### Why Deterministic Resolution?
 
-# Output:
-# Attribution Health (30-day rolling)
-# ───────────────────────────────────
-# Precision:       78% (target: >60%)
-# Inferred Ratio:  22% (target: <40%)
-# Improvement Rate: 65% (target: >50%)
-#
-# Kill Switch: active
-# Last evaluated: 2024-01-15T10:30:00Z
-```
+LLMs are great at extraction but inconsistent at classification. By using Claude only for evidence extraction and a decision tree for failure mode resolution:
+- **Reproducibility** — Same evidence → same classification
+- **Debuggability** — Decision tree is inspectable
+- **Stability** — No drift from model updates
 
-### Diagnostic Checks
+### Why Two Architect Layers?
 
-```bash
-falcon doctor
+- **Design docs** (85% detail) — What humans naturally produce
+- **Systems docs** (100% detail) — What agents need to execute reliably
 
-# Checks:
-# ✓ Database accessible and writable
-# ✓ Config file valid
-# ✓ Workspace exists
-# ✓ Project exists
-# ✓ Baselines seeded (11/11)
-# ✓ Git remote configured
-```
+The Systems-Architect's job is to make implicit knowledge explicit — the pedantic details that are easy for an agent with full context but hard for an agent mid-implementation.
+
+### Why Token-Conscious Injection?
+
+Agents have context limits and attention decay. By capping at 6 warnings and using tiered selection:
+- **Security first** — Critical patterns always injected
+- **Relevance** — Task profile matching reduces noise
+- **No fatigue** — Agents don't learn to ignore warnings
 
 ---
 
@@ -518,55 +534,6 @@ npm run typecheck  # Type check without emitting
 npm test           # Watch mode
 npm run test:run   # Single run
 ```
-
-### Project Structure
-
-```
-src/
-├── cli/           # Command-line interface
-├── storage/       # SQLite database and repositories
-├── schemas/       # Zod validation schemas
-├── attribution/   # Pattern attribution engine
-├── injection/     # Warning injection system
-├── workflow/      # Integration hooks
-├── evolution/     # Learning and decay processors
-├── metrics/       # Observability and reporting
-├── services/      # Business logic (kill switch, etc.)
-└── config/        # Configuration loading
-```
-
----
-
-## Design Philosophy
-
-### Why Deterministic Resolution?
-
-LLMs are great at extraction but inconsistent at classification. By using Claude only for evidence extraction and a decision tree for failure mode resolution, we get:
-- **Reproducibility** - Same evidence → same classification
-- **Debuggability** - Decision tree is inspectable
-- **Stability** - No drift from model updates
-
-### Why Append-Only History?
-
-Patterns evolve, but history matters. By never deleting occurrences (only marking them inactive), we maintain:
-- **Full audit trail** - When did we learn this?
-- **Decay calculation** - How often does this recur?
-- **Debugging** - Why did we inject this warning?
-
-### Why Token-Conscious Injection?
-
-Agents have context limits and attention decay. By capping at 6 warnings and using tiered selection:
-- **Security first** - Critical patterns always injected
-- **Relevance** - Task profile matching reduces noise
-- **No fatigue** - Agents don't learn to ignore warnings
-
-### Why Separate Patterns from Noncompliance?
-
-A finding can mean two things:
-- The guidance was wrong (Pattern)
-- The guidance was right but ignored (ExecutionNoncompliance)
-
-Conflating these pollutes the feedback loop. Falcon-ai tracks them separately.
 
 ---
 
