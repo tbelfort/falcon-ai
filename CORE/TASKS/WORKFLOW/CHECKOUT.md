@@ -131,27 +131,27 @@ Example for a package (<CONFIG>Example package path</CONFIG>):
 | State | Action |
 |-------|--------|
 | Backlog | **FAIL** — "Issue is in Backlog. Move to Todo first." |
-| Todo | Read `CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` |
+| Todo | Read `.falcon/CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` |
 | Context Pack In Progress | **FAIL** — "Another agent is working on the context pack." |
 | Context Pack In Review | Check labels (see below) |
-| Ready for Spec | Read `CORE/TASKS/WORKFLOW/SPEC.md` |
+| Ready for Spec | Read `.falcon/CORE/TASKS/WORKFLOW/SPEC.md` |
 | Spec In Progress | **FAIL** — "Another agent is working on the spec." |
-| Spec Drafted | Read `CORE/TASKS/WORKFLOW/SPEC_HARDENING_TESTS.md` |
+| Spec Drafted | Read `.falcon/CORE/TASKS/WORKFLOW/SPEC_HARDENING_TESTS.md` |
 | Spec - Hardening Tests | **FAIL** — "Another agent is hardening the spec tests." |
-| Spec In Review | Read `CORE/TASKS/WORKFLOW/SPEC_REVIEW.md` |
-| Ready to Start | Read `CORE/TASKS/WORKFLOW/IMPLEMENT.md` (pass `SUB_AGENT_COUNT` if > 0) |
-| Work Started | Read `CORE/TASKS/WORKFLOW/IMPLEMENT.md` (pass `SUB_AGENT_COUNT` if > 0) |
+| Spec In Review | Read `.falcon/CORE/TASKS/WORKFLOW/SPEC_REVIEW.md` |
+| Ready to Start | Read `.falcon/CORE/TASKS/WORKFLOW/IMPLEMENT.md` (pass `SUB_AGENT_COUNT` if > 0) |
+| Work Started | Read `.falcon/CORE/TASKS/WORKFLOW/IMPLEMENT.md` (pass `SUB_AGENT_COUNT` if > 0) |
 | In Review | Check labels and override (see below) |
-| Review Passed | Read `CORE/TASKS/WORKFLOW/TESTING.md` |
+| Review Passed | Read `.falcon/CORE/TASKS/WORKFLOW/TESTING.md` |
 | Testing | **FAIL** — "Another agent is running tests." |
-| Ready to Merge | Read `CORE/TASKS/WORKFLOW/MERGE.md` |
+| Ready to Merge | Read `.falcon/CORE/TASKS/WORKFLOW/MERGE.md` |
 
 ### Context Pack In Review — Label Check
 
 When issue is in **Context Pack In Review**, check for the improvement label:
 
-1. **If `needs_improve_context_pack` label exists:** Read `CORE/TASKS/WORKFLOW/CONTEXT_PACK_IMPROVE.md`
-2. **Otherwise (no label):** Read `CORE/TASKS/WORKFLOW/CONTEXT_PACK_REVIEW.md`
+1. **If `needs_improve_context_pack` label exists:** Read `.falcon/CORE/TASKS/WORKFLOW/CONTEXT_PACK_IMPROVE.md`
+2. **Otherwise (no label):** Read `.falcon/CORE/TASKS/WORKFLOW/CONTEXT_PACK_REVIEW.md`
 
 **Flow:**
 - Review finds gaps → adds `needs_improve_context_pack` label, stays in same state
@@ -162,11 +162,11 @@ When issue is in **Context Pack In Review**, check for the improvement label:
 
 When issue is in **In Review**, determine fix vs review mode:
 
-1. **If `--fix` override provided:** Read `CORE/TASKS/WORKFLOW/FIX_REVIEW.md`
-2. **If `--review` override provided:** Read `CORE/TASKS/WORKFLOW/PR_REVIEW.md`
-3. **If `code-review-failed` label exists:** Read `CORE/TASKS/WORKFLOW/FIX_REVIEW.md`
-4. **If `spec-review-fail` label exists:** Read `CORE/TASKS/WORKFLOW/FIX_REVIEW.md` (spec compliance issues)
-5. **Otherwise (no label, no override):** Read `CORE/TASKS/WORKFLOW/PR_REVIEW.md`
+1. **If `--fix` override provided:** Read `.falcon/CORE/TASKS/WORKFLOW/FIX_REVIEW.md`
+2. **If `--review` override provided:** Read `.falcon/CORE/TASKS/WORKFLOW/PR_REVIEW.md`
+3. **If `code-review-failed` label exists:** Read `.falcon/CORE/TASKS/WORKFLOW/FIX_REVIEW.md`
+4. **If `spec-review-fail` label exists:** Read `.falcon/CORE/TASKS/WORKFLOW/FIX_REVIEW.md` (spec compliance issues)
+5. **Otherwise (no label, no override):** Read `.falcon/CORE/TASKS/WORKFLOW/PR_REVIEW.md`
 
 **Use cases for override:**
 - `--fix`: Force fix mode even if label was accidentally removed

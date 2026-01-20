@@ -33,14 +33,33 @@ LINEAR ISSUE → CONTEXT PACK → SPEC → IMPLEMENTATION → PR REVIEW → PATT
 
 ## Repository Structure
 
+After `falcon init`, the following files are installed in your project:
+
 ```
-CORE/                    # Task definitions and role prompts
-├── TASKS/WORKFLOW/      # Workflow task files (SPEC.md, IMPLEMENT.md, etc.)
-├── ROLES/               # Agent role definitions (ARCHITECT.md, PM.md, etc.)
-└── TEMPLATES/           # Research and documentation templates
+.falcon/                 # Falcon configuration and CORE files
+├── config.yaml          # Project configuration
+└── CORE/
+    ├── TASKS/WORKFLOW/  # Workflow task files (SPEC.md, IMPLEMENT.md, etc.)
+    ├── ROLES/           # Agent role definitions (ARCHITECT.md, PM.md, etc.)
+    └── TEMPLATES/       # Research and documentation templates
+
+.claude/                 # Claude Code integration files
+├── commands/            # User-invokable commands (checkout, doc-review, etc.)
+└── agents/              # PR review agents (scouts, judges)
+```
+
+Falcon-ai source structure:
+
+```
+CORE/                    # Source files (copied during init)
+├── TASKS/WORKFLOW/
+├── ROLES/
+├── commands/            # → .claude/commands/
+├── agents/              # → .claude/agents/
+└── TEMPLATES/
 
 specs/                   # Implementation specifications
-├── spec-pattern-attribution-v1.0.md   # Main system spec
+├── spec-pattern-attribution-v1.1.md   # Main system spec
 ├── implementation-plan-master.md       # Master implementation plan
 └── phases/              # Detailed phase plans (1-5)
 
@@ -55,10 +74,10 @@ This project uses a structured multi-agent workflow with Linear integration:
 `Todo` → `Context Pack Drafted` → `Spec In Progress` → `Spec Drafted` → `Ready to Start` → `In Progress` → `In Review` → `Done`
 
 ### Key Task Files
-- `CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` - Creating context packs
-- `CORE/TASKS/WORKFLOW/SPEC.md` - Writing specifications
-- `CORE/TASKS/WORKFLOW/IMPLEMENT.md` - Implementation
-- `CORE/TASKS/WORKFLOW/PR_REVIEW.md` - PR review process
+- `.falcon/CORE/TASKS/WORKFLOW/CONTEXT_PACK.md` - Creating context packs
+- `.falcon/CORE/TASKS/WORKFLOW/SPEC.md` - Writing specifications
+- `.falcon/CORE/TASKS/WORKFLOW/IMPLEMENT.md` - Implementation
+- `.falcon/CORE/TASKS/WORKFLOW/PR_REVIEW.md` - PR review process
 
 ### Linear Integration
 ```bash

@@ -107,7 +107,7 @@ Ask these questions about what documentation should be **added**:
 
 ### 3d. If documentation updates or additions are needed
 
-**Load the DOC-MANAGER role** by reading `CORE/ROLES/DOC-MANAGER.md` before making doc changes.
+**Load the DOC-MANAGER role** by reading `.falcon/CORE/ROLES/DOC-MANAGER.md` before making doc changes.
 
 1. Checkout the PR branch:
    ```bash

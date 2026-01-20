@@ -10,7 +10,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { getDatabase } from '../../storage/db.js';
 import { canonicalizeGitUrl } from '../../config/url-utils.js';
 import { seedBaselines } from '../../storage/seed/baselines.js';
@@ -31,6 +31,22 @@ interface Workspace {
   id: string;
   slug: string;
   name: string;
+}
+
+/**
+ * Validate user-provided input strings.
+ * Prevents empty values, overly long strings, and null byte injection.
+ */
+function validateInput(value: string, fieldName: string): void {
+  if (!value || value.trim() === '') {
+    throw new Error(`${fieldName} cannot be empty`);
+  }
+  if (value.length > 255) {
+    throw new Error(`${fieldName} must be 255 characters or fewer`);
+  }
+  if (value.includes('\0')) {
+    throw new Error(`${fieldName} cannot contain null bytes`);
+  }
 }
 
 export const initCommand = new Command('init')
@@ -58,15 +74,35 @@ export const initCommand = new Command('init')
 
     // STEP 3: Get repo identity
     const repoOriginUrl = getGitRemoteOrigin();
-    if (!repoOriginUrl) {
-      console.error('Error: No git remote "origin" found.');
-      console.error('Add a remote with: git remote add origin <url>');
+    const repoSubdir = getRepoSubdir(gitRoot);
+    const projectName = options.name || path.basename(gitRoot);
+
+    // Validate project name
+    try {
+      validateInput(projectName, 'Project name');
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
       process.exit(1);
     }
 
-    const canonicalUrl = canonicalizeGitUrl(repoOriginUrl);
-    const repoSubdir = getRepoSubdir(gitRoot);
-    const projectName = options.name || path.basename(gitRoot);
+    // Determine canonical URL - use remote if available, otherwise generate local identifier
+    let canonicalUrl: string;
+
+    if (repoOriginUrl) {
+      canonicalUrl = canonicalizeGitUrl(repoOriginUrl);
+    } else {
+      // No remote - generate local identifier from absolute path
+      const pathHash = createHash('sha256').update(gitRoot).digest('hex').slice(0, 16);
+      canonicalUrl = `local:${pathHash}`;
+
+      console.log('');
+      console.log('Note: No git remote found. Using local-only mode.');
+      console.log('');
+      console.log('  Falcon-ai is currently single-developer per project.');
+      console.log('  All pattern data is stored locally on this machine.');
+      console.log('  If you add a remote later, run "falcon init" again to update.');
+      console.log('');
+    }
 
     // STEP 4: Check for duplicate registration
     const db = getDatabase();
@@ -191,17 +227,43 @@ export const initCommand = new Command('init')
     fs.writeFileSync(configPath, yaml.stringify(config));
     console.log(`\nCreated ${configPath}`);
 
-    // STEP 8: Suggest .gitignore update
+    // STEP 8: Install CORE files
+    const packageRoot = path.resolve(import.meta.dirname, '../../..');
+    const coreSource = path.join(packageRoot, 'CORE');
+
+    // Copy to .falcon/CORE/
+    copyDirRecursive(path.join(coreSource, 'TASKS'), path.join(falconDir, 'CORE', 'TASKS'));
+    copyDirRecursive(
+      path.join(coreSource, 'TEMPLATES'),
+      path.join(falconDir, 'CORE', 'TEMPLATES')
+    );
+    copyDirRecursive(path.join(coreSource, 'ROLES'), path.join(falconDir, 'CORE', 'ROLES'));
+
+    // Copy to .claude/
+    const claudeDir = path.join(gitRoot, '.claude');
+    copyDirRecursive(path.join(coreSource, 'commands'), path.join(claudeDir, 'commands'));
+    copyDirRecursive(path.join(coreSource, 'agents'), path.join(claudeDir, 'agents'));
+
+    console.log('Installed CORE files to .falcon/ and .claude/');
+
+    // STEP 9: Suggest .gitignore update
     const gitignorePath = path.join(gitRoot, '.gitignore');
-    const gitignoreEntry = '.falcon/';
+    const gitignoreEntries = ['.falcon/', '.claude/commands/', '.claude/agents/'];
 
     if (fs.existsSync(gitignorePath)) {
       const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
-      if (!gitignore.includes(gitignoreEntry)) {
-        console.log(`\nNote: Consider adding "${gitignoreEntry}" to .gitignore`);
+      const missing = gitignoreEntries.filter((entry) => !gitignore.includes(entry));
+      if (missing.length > 0) {
+        console.log(`\nNote: Consider adding to .gitignore:`);
+        for (const entry of missing) {
+          console.log(`  ${entry}`);
+        }
       }
     } else {
-      console.log(`\nNote: Consider creating .gitignore and adding "${gitignoreEntry}"`);
+      console.log(`\nNote: Consider creating .gitignore and adding:`);
+      for (const entry of gitignoreEntries) {
+        console.log(`  ${entry}`);
+      }
     }
 
     console.log('\nInitialization complete!');
@@ -228,4 +290,20 @@ function getRepoSubdir(gitRoot: string): string | null {
   const cwd = process.cwd();
   if (cwd === gitRoot) return null;
   return path.relative(gitRoot, cwd) || null;
+}
+
+function copyDirRecursive(src: string, dest: string): void {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dest, { recursive: true });
+
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
