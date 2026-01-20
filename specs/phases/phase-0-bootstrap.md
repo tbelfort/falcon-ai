@@ -1,6 +1,6 @@
 # Phase 0: Bootstrap and Configuration
 
-**Parent Document:** `specs/spec-pattern-attribution-v1.0.md`
+**Parent Document:** `specs/spec-pattern-attribution-v1.1.md`
 **Dependencies:** None (this is the starting point)
 **Outputs Required By:** Phase 1, Phase 2, Phase 3, Phase 4, Phase 5
 

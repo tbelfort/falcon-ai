@@ -377,6 +377,23 @@ falcon_test/
     ├── APP_4_results.md
     ├── APP_5_results.md
     └── SUMMARY.md            # Overall test summary + recommendation
+
+~/Projects/falcon-tests/      # Test execution folders
+├── app1_treatment_1/         # App 1, Treatment Run 1 (with Falcon)
+├── app1_treatment_2/
+├── app1_treatment_3/
+├── app1_treatment_4/
+├── app1_treatment_5/
+├── app1_control_1/           # App 1, Control Run 1 (without Falcon)
+├── app1_control_2/
+├── app1_control_3/
+├── app1_control_4/
+├── app1_control_5/
+├── app2_treatment_1/         # App 2, Treatment Run 1
+│   ...                       # (pattern repeats for apps 2-5)
+├── app5_treatment_5/
+└── app5_control_5/
+    (50 folders total: 5 apps × 10 runs each)
 ```
 
 ---

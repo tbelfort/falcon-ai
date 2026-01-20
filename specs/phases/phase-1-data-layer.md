@@ -1,6 +1,6 @@
 # Phase 1: Data Layer Foundation
 
-**Parent Document:** `specs/spec-pattern-attribution-v1.0.md`
+**Parent Document:** `specs/spec-pattern-attribution-v1.1.md`
 **Dependencies:** None (this is the foundation)
 **Outputs Required By:** Phase 2, Phase 3, Phase 4, Phase 5
 
