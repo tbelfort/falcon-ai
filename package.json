@@ -51,7 +51,8 @@
     "falcon": "./dist/cli/index.js"
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "CORE/**/*"
   ],
   "scripts": {
     "build": "tsc",

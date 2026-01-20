@@ -75,8 +75,23 @@ export const deleteCommand = new Command('delete')
     // Delete associated data (in order due to foreign keys)
     console.log('\nDeleting project data...');
 
-    // Tables with project_id column
+    // Tables with project_id column - ordered for FK constraints
+    // pattern_definitions must be deleted LAST since provisional_alerts and tagging_misses reference it
     const tables = [
+      'pattern_occurrences',
+      'execution_noncompliance',
+      'doc_update_requests',
+      'provisional_alerts',
+      'injection_logs',
+      'salience_issues',
+      'tagging_misses',
+      'kill_switch_status',
+      'attribution_outcomes',
+      'pattern_definitions',
+    ];
+
+    // Whitelist validation for defense-in-depth
+    const ALLOWED_TABLES = new Set([
       'pattern_occurrences',
       'pattern_definitions',
       'execution_noncompliance',
@@ -87,17 +102,25 @@ export const deleteCommand = new Command('delete')
       'tagging_misses',
       'kill_switch_status',
       'attribution_outcomes',
-    ];
+    ]);
 
-    for (const table of tables) {
-      const result = db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(project.id);
-      if (result.changes > 0) {
-        console.log(`  Deleted ${result.changes} rows from ${table}`);
+    // Wrap deletions in a transaction for atomicity
+    const deleteAll = db.transaction(() => {
+      for (const table of tables) {
+        if (!ALLOWED_TABLES.has(table)) {
+          throw new Error(`Attempted deletion from unauthorized table: ${table}`);
+        }
+        const result = db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(project.id);
+        if (result.changes > 0) {
+          console.log(`  Deleted ${result.changes} rows from ${table}`);
+        }
       }
-    }
 
-    // Delete project record
-    db.prepare('DELETE FROM projects WHERE id = ?').run(project.id);
+      // Delete project record
+      db.prepare('DELETE FROM projects WHERE id = ?').run(project.id);
+    });
+
+    deleteAll();
     console.log('  Deleted project record');
 
     // Remove .falcon/config.yaml if it exists

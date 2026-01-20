@@ -1,13 +1,32 @@
 /**
  * falcon workspace commands.
  *
- * Manages workspaces: list, create, archive.
+ * Manages workspaces: list, create, archive, rename.
  */
 
 import { Command } from 'commander';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import yaml from 'yaml';
 import { getDatabase } from '../../storage/db.js';
 import { seedBaselines } from '../../storage/seed/baselines.js';
+
+/**
+ * Validate user-provided input strings.
+ * Prevents empty values, overly long strings, and null byte injection.
+ */
+function validateInput(value: string, fieldName: string): void {
+  if (!value || value.trim() === '') {
+    throw new Error(`${fieldName} cannot be empty`);
+  }
+  if (value.length > 255) {
+    throw new Error(`${fieldName} must be 255 characters or fewer`);
+  }
+  if (value.includes('\0')) {
+    throw new Error(`${fieldName} cannot contain null bytes`);
+  }
+}
 
 interface Workspace {
   id: string;
@@ -64,6 +83,17 @@ workspaceCommand
   .description('Create a new workspace')
   .option('-s, --slug <slug>', 'Custom URL-safe slug')
   .action((name: string, options: { slug?: string }) => {
+    // Validate inputs
+    try {
+      validateInput(name, 'Workspace name');
+      if (options.slug) {
+        validateInput(options.slug, 'Custom slug');
+      }
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
+
     const db = getDatabase();
     const slug = options.slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
@@ -140,6 +170,17 @@ workspaceCommand
   .description('Rename a workspace')
   .option('-n, --name <name>', 'Also update the display name')
   .action((oldSlug: string, newSlug: string, options: { name?: string }) => {
+    // Validate inputs
+    try {
+      validateInput(newSlug, 'New slug');
+      if (options.name) {
+        validateInput(options.name, 'Display name');
+      }
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
+
     const db = getDatabase();
 
     // Check old workspace exists
@@ -173,4 +214,28 @@ workspaceCommand
 
     console.log(`Renamed workspace: ${oldSlug} → ${newSlug}`);
     if (options.name) console.log(`Updated name: ${newName}`);
+
+    // Update config.yaml in all projects belonging to this workspace
+    interface ProjectRow {
+      id: string;
+      repo_path: string;
+    }
+    const projects = db.prepare(
+      'SELECT id, repo_path FROM projects WHERE workspace_id = ? AND status = ?'
+    ).all(workspace.id, 'active') as ProjectRow[];
+
+    for (const project of projects) {
+      const configPath = path.join(project.repo_path, '.falcon', 'config.yaml');
+      if (fs.existsSync(configPath)) {
+        try {
+          const config = yaml.parse(fs.readFileSync(configPath, 'utf-8'));
+          config.workspace.slug = newSlug;
+          if (options.name) config.workspace.name = newName;
+          fs.writeFileSync(configPath, yaml.stringify(config));
+          console.log(`  Updated ${configPath}`);
+        } catch {
+          console.warn(`  Warning: Could not update ${configPath}`);
+        }
+      }
+    }
   });

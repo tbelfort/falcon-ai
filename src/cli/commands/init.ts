@@ -33,6 +33,22 @@ interface Workspace {
   name: string;
 }
 
+/**
+ * Validate user-provided input strings.
+ * Prevents empty values, overly long strings, and null byte injection.
+ */
+function validateInput(value: string, fieldName: string): void {
+  if (!value || value.trim() === '') {
+    throw new Error(`${fieldName} cannot be empty`);
+  }
+  if (value.length > 255) {
+    throw new Error(`${fieldName} must be 255 characters or fewer`);
+  }
+  if (value.includes('\0')) {
+    throw new Error(`${fieldName} cannot contain null bytes`);
+  }
+}
+
 export const initCommand = new Command('init')
   .description('Initialize falcon-ai in the current repository')
   .option('-w, --workspace <slug>', 'Use existing workspace (by slug)')
@@ -60,6 +76,14 @@ export const initCommand = new Command('init')
     const repoOriginUrl = getGitRemoteOrigin();
     const repoSubdir = getRepoSubdir(gitRoot);
     const projectName = options.name || path.basename(gitRoot);
+
+    // Validate project name
+    try {
+      validateInput(projectName, 'Project name');
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
 
     // Determine canonical URL - use remote if available, otherwise generate local identifier
     let canonicalUrl: string;

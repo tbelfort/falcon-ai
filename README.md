@@ -235,6 +235,25 @@ This creates:
 - Seeds 11 baseline security principles
 - Registers project in falcon-ai database
 
+### Gitignore Recommendations
+
+After initialization, add these entries to your `.gitignore`:
+
+```
+.falcon/
+.claude/commands/
+.claude/agents/
+```
+
+These directories contain local CORE files that are installed from the falcon-ai package and should not be committed.
+
+### Local-Only Mode
+
+If your repository has no git remote configured, falcon-ai operates in local-only mode:
+- Uses `local:<hash>` as the repository identifier
+- Pattern data is stored locally on this machine only
+- If you add a remote later, run `falcon init` again to update
+
 ---
 
 ## Configuration
@@ -289,11 +308,22 @@ falcon health                  # View attribution health metrics
 falcon workspace list          # List all workspaces
 falcon workspace create <slug> # Create workspace
 falcon workspace archive <slug> # Archive workspace
+falcon workspace rename <old> <new> # Rename workspace slug
 
 falcon project list            # List projects
 falcon project create          # Create project
-falcon project delete <id>     # Delete project
+falcon delete [--force]        # Delete current project
 ```
+
+### Deleting Projects
+
+The `falcon delete` command requires double confirmation:
+1. Type "yes" to confirm deletion
+2. Type the full project name to verify
+
+Use `--force` to skip confirmations (dangerous).
+
+Note: Deleting a project removes all patterns, occurrences, and data from the local database. The workspace is NOT deleted.
 
 ### Kill Switch (Safety Controls)
 
