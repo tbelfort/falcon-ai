@@ -41,6 +41,7 @@ import { DerivedPrincipleRepository } from '../storage/repositories/derived-prin
 import { SalienceIssueRepository } from '../storage/repositories/salience-issue.repo.js';
 import { ProvisionalAlertRepository } from '../storage/repositories/provisional-alert.repo.js';
 import { KillSwitchService, type PatternCreationState } from '../services/kill-switch.service.js';
+import { mapScoutToCategory } from '../utils/category-mapping.js';
 
 /**
  * Input for attributing a finding.
@@ -383,7 +384,7 @@ export class AttributionOrchestrator {
   ): { pattern: PatternDefinition; occurrence: PatternOccurrence } {
     const patternContent = evidence.carrierQuote;
     const normalizedContent = patternContent.replace(/\s+/g, ' ').trim();
-    const findingCategory = this.mapScoutToCategory(input.finding.scoutType);
+    const findingCategory = mapScoutToCategory(input.finding.scoutType);
 
     // patternKey = SHA-256(carrierStage|patternContent|findingCategory)
     const patternKey = createHash('sha256')
@@ -521,22 +522,6 @@ export class AttributionOrchestrator {
   ): boolean {
     const rank = { verbatim: 3, paraphrase: 2, inferred: 1 };
     return rank[newType] > rank[existingType];
-  }
-
-  /**
-   * Map scout type to finding category.
-   */
-  private mapScoutToCategory(scoutType: string): FindingCategory {
-    const mapping: Record<string, FindingCategory> = {
-      adversarial: 'security',
-      security: 'security',
-      bugs: 'correctness',
-      tests: 'testing',
-      docs: 'compliance',
-      spec: 'compliance',
-      decisions: 'decisions',
-    };
-    return mapping[scoutType] || 'correctness';
   }
 
   /**

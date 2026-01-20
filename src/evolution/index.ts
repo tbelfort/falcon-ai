@@ -43,3 +43,12 @@ export {
   type AnalysisResult,
   type ResolutionResult,
 } from './tagging-miss-resolver.js';
+
+export {
+  checkForPromotion,
+  promoteToDerivdPrinciple,
+  computeDerivedConfidence,
+  checkWorkspaceForPromotions,
+  type PromotionResult,
+  type PromotionCheckResult,
+} from './promotion-checker.js';

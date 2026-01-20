@@ -55,20 +55,35 @@ export function formatMetricsReport(metrics: MetricsSnapshot): string {
   lines.push('');
 
   // Health section
-  const precisionColor = getHealthColor(metrics.health.attributionPrecisionScore, 0.6, true);
-  const inferredColor = getHealthColor(metrics.health.inferredRatio, 0.25, false);
-  const improvementColor = getHealthColor(metrics.health.observedImprovementRate, 0.4, true);
-
   lines.push(colors.cyan + '❤️ Health Metrics' + colors.reset);
-  lines.push(
-    `  Precision Rate: ${precisionColor}${(metrics.health.attributionPrecisionScore * 100).toFixed(1)}%${colors.reset}`
-  );
-  lines.push(
-    `  Inferred Rate: ${inferredColor}${(metrics.health.inferredRatio * 100).toFixed(1)}%${colors.reset}`
-  );
-  lines.push(
-    `  Improvement Rate: ${improvementColor}${(metrics.health.observedImprovementRate * 100).toFixed(1)}%${colors.reset}`
-  );
+
+  if (metrics.health.attributionPrecisionScore !== null) {
+    const precisionColor = getHealthColor(metrics.health.attributionPrecisionScore, 0.6, true);
+    lines.push(
+      `  Precision Rate: ${precisionColor}${(metrics.health.attributionPrecisionScore * 100).toFixed(1)}%${colors.reset}`
+    );
+  } else {
+    lines.push(`  Precision Rate: ${colors.dim}N/A${colors.reset}`);
+  }
+
+  if (metrics.health.inferredRatio !== null) {
+    const inferredColor = getHealthColor(metrics.health.inferredRatio, 0.25, false);
+    lines.push(
+      `  Inferred Rate: ${inferredColor}${(metrics.health.inferredRatio * 100).toFixed(1)}%${colors.reset}`
+    );
+  } else {
+    lines.push(`  Inferred Rate: ${colors.dim}N/A${colors.reset}`);
+  }
+
+  if (metrics.health.observedImprovementRate !== null) {
+    const improvementColor = getHealthColor(metrics.health.observedImprovementRate, 0.4, true);
+    lines.push(
+      `  Improvement Rate: ${improvementColor}${(metrics.health.observedImprovementRate * 100).toFixed(1)}%${colors.reset}`
+    );
+  } else {
+    lines.push(`  Improvement Rate: ${colors.dim}N/A${colors.reset}`);
+  }
+
   lines.push(`  Kill Switch: ${getKillSwitchColor(metrics.health.killSwitchState)}${metrics.health.killSwitchState}${colors.reset}`);
   lines.push('');
 
@@ -152,10 +167,13 @@ export function getMetricsCsvHeaders(): string {
  * Format a compact summary line.
  */
 export function formatMetricsSummary(metrics: MetricsSnapshot): string {
+  const precisionStr = metrics.health.attributionPrecisionScore !== null
+    ? `${(metrics.health.attributionPrecisionScore * 100).toFixed(0)}%`
+    : 'N/A';
   return (
     `Patterns: ${metrics.attribution.activePatterns} | ` +
     `Injections: ${metrics.injection.totalInjections} | ` +
-    `Precision: ${(metrics.health.attributionPrecisionScore * 100).toFixed(0)}% | ` +
+    `Precision: ${precisionStr} | ` +
     `Health: ${metrics.health.killSwitchState}`
   );
 }

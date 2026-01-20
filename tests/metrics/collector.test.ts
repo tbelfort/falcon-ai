@@ -271,9 +271,10 @@ describe('collectMetrics', () => {
 
     // Should have health metrics from KillSwitchService
     expect(metrics.health).toBeDefined();
-    expect(typeof metrics.health.attributionPrecisionScore).toBe('number');
-    expect(typeof metrics.health.inferredRatio).toBe('number');
-    expect(typeof metrics.health.observedImprovementRate).toBe('number');
+    // Health scores are null when insufficient data (new project with no attributions)
+    expect(metrics.health.attributionPrecisionScore === null || typeof metrics.health.attributionPrecisionScore === 'number').toBe(true);
+    expect(metrics.health.inferredRatio === null || typeof metrics.health.inferredRatio === 'number').toBe(true);
+    expect(metrics.health.observedImprovementRate === null || typeof metrics.health.observedImprovementRate === 'number').toBe(true);
     expect(typeof metrics.health.killSwitchState).toBe('string');
     expect(metrics.health.killSwitchState).toBe('active'); // Default state
   });

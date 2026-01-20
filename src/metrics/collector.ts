@@ -32,9 +32,9 @@ export interface MetricsSnapshot {
     uniquePatternsInjected: number;
   };
   health: {
-    attributionPrecisionScore: number;
-    inferredRatio: number;
-    observedImprovementRate: number;
+    attributionPrecisionScore: number | null;
+    inferredRatio: number | null;
+    observedImprovementRate: number | null;
     killSwitchState: string;
   };
   principles: {

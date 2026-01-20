@@ -123,11 +123,47 @@ export class DerivedPrincipleRepository extends BaseRepository<DerivedPrinciple>
   }
 
   /**
-   * Compute promotion key from source pattern IDs.
+   * Compute promotion key for idempotent pattern-to-derived promotion.
+   * Key is deterministic based on pattern origin, not arbitrary pattern IDs.
    */
-  static computePromotionKey(patternIds: string[]): string {
-    const sorted = [...patternIds].sort();
-    return createHash('sha256').update(sorted.join('|')).digest('hex');
+  static computePromotionKey(options: {
+    workspaceId: string;
+    patternKey: string;
+    carrierStage: 'context-pack' | 'spec';
+    findingCategory: string;
+  }): string {
+    return createHash('sha256')
+      .update(
+        `${options.workspaceId}|${options.patternKey}|${options.carrierStage}|${options.findingCategory}`
+      )
+      .digest('hex');
+  }
+
+  /**
+   * Find recently archived derived principles (for potential re-promotion).
+   */
+  findRecentlyArchived(options: {
+    workspaceId: string;
+    withinDays?: number;
+  }): DerivedPrinciple[] {
+    const days = options.withinDays ?? 30;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoff = cutoffDate.toISOString();
+
+    const rows = this.db
+      .prepare(
+        `
+      SELECT * FROM derived_principles
+      WHERE workspace_id = ?
+        AND origin = 'derived'
+        AND status = 'archived'
+        AND archived_at >= ?
+    `
+      )
+      .all(options.workspaceId, cutoff) as Record<string, unknown>[];
+
+    return rows.map((row) => this.rowToEntity(row));
   }
 
   /**

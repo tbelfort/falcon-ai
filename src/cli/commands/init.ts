@@ -125,8 +125,8 @@ export const initCommand = new Command('init')
         .get(workspaceSlug) as Workspace | undefined;
 
       if (existingWorkspace) {
-        // Append random suffix
-        workspaceSlug = `${defaultSlug}-${randomUUID().slice(0, 4)}`;
+        // Append random suffix (8 chars for better collision resistance)
+        workspaceSlug = `${defaultSlug}-${randomUUID().slice(0, 8)}`;
       }
 
       const now = new Date().toISOString();

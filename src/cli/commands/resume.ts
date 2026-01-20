@@ -66,9 +66,9 @@ export const resumeCommand = new Command('resume')
       // Show current health summary
       const metrics = killSwitchService.getHealthMetrics(scope);
       console.log('Current metrics:');
-      console.log(`  Precision Score: ${(metrics.attributionPrecisionScore * 100).toFixed(1)}%`);
-      console.log(`  Inferred Ratio: ${(metrics.inferredRatio * 100).toFixed(1)}%`);
-      console.log(`  Improvement Rate: ${(metrics.observedImprovementRate * 100).toFixed(1)}%`);
+      console.log(`  Precision Score: ${metrics.attributionPrecisionScore !== null ? `${(metrics.attributionPrecisionScore * 100).toFixed(1)}%` : 'N/A'}`);
+      console.log(`  Inferred Ratio: ${metrics.inferredRatio !== null ? `${(metrics.inferredRatio * 100).toFixed(1)}%` : 'N/A'}`);
+      console.log(`  Improvement Rate: ${metrics.observedImprovementRate !== null ? `${(metrics.observedImprovementRate * 100).toFixed(1)}%` : 'N/A'}`);
       console.log('');
     } catch (e) {
       if (e instanceof ScopeResolutionError) {

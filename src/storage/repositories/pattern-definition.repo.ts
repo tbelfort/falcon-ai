@@ -188,13 +188,10 @@ export class PatternDefinitionRepository extends BaseRepository<PatternDefinitio
   /**
    * Create a new pattern or return existing if same patternKey.
    * Updates severityMax if new occurrence has higher severity.
+   *
+   * Uses transaction to prevent race conditions on concurrent creation.
    */
   create(data: CreateInput): PatternDefinition {
-    const now = this.now();
-    const contentHash = createHash('sha256')
-      .update(data.patternContent.trim().toLowerCase())
-      .digest('hex');
-
     // Extract scope IDs (scope must be project-level per Zod validation)
     const { workspaceId, projectId } = data.scope as {
       level: 'project';
@@ -209,68 +206,76 @@ export class PatternDefinitionRepository extends BaseRepository<PatternDefinitio
       data.findingCategory
     );
 
-    // Check for existing by patternKey within same scope (deduplication)
-    const existing = this.findByPatternKey({ workspaceId, projectId, patternKey });
-    if (existing) {
-      // Update severityMax if new occurrence has higher severity
-      if (this.severityRank(data.severity) > this.severityRank(existing.severityMax)) {
-        return this.update(existing.id, { severityMax: data.severity })!;
+    // Wrap in transaction to prevent race condition
+    return this.db.transaction(() => {
+      // Check for existing by patternKey within same scope (deduplication)
+      const existing = this.findByPatternKey({ workspaceId, projectId, patternKey });
+      if (existing) {
+        // Update severityMax if new occurrence has higher severity
+        if (this.severityRank(data.severity) > this.severityRank(existing.severityMax)) {
+          return this.update(existing.id, { severityMax: data.severity })!;
+        }
+        return existing;
       }
-      return existing;
-    }
 
-    const pattern: PatternDefinition = {
-      id: randomUUID(),
-      patternKey,
-      contentHash,
-      severityMax: data.severity, // Initialize to first occurrence severity
-      createdAt: now,
-      updatedAt: now,
-      ...data,
-    };
+      const now = this.now();
+      const contentHash = createHash('sha256')
+        .update(data.patternContent.trim().toLowerCase())
+        .digest('hex');
 
-    // Validate with Zod
-    PatternDefinitionSchema.parse(pattern);
+      const pattern: PatternDefinition = {
+        id: randomUUID(),
+        patternKey,
+        contentHash,
+        severityMax: data.severity, // Initialize to first occurrence severity
+        createdAt: now,
+        updatedAt: now,
+        ...data,
+      };
 
-    this.db
-      .prepare(
-        `
-      INSERT INTO pattern_definitions (
-        id, workspace_id, project_id, pattern_key, content_hash, pattern_content,
-        failure_mode, finding_category, severity, severity_max, alternative,
-        consequence_class, carrier_stage, primary_carrier_quote_type,
-        technologies, task_types, touches, aligned_baseline_id,
-        status, permanent, superseded_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-      )
-      .run(
-        pattern.id,
-        workspaceId,
-        projectId,
-        pattern.patternKey,
-        pattern.contentHash,
-        pattern.patternContent,
-        pattern.failureMode,
-        pattern.findingCategory,
-        pattern.severity,
-        pattern.severityMax,
-        pattern.alternative,
-        pattern.consequenceClass ?? null,
-        pattern.carrierStage,
-        pattern.primaryCarrierQuoteType,
-        this.stringifyJsonField(pattern.technologies),
-        this.stringifyJsonField(pattern.taskTypes),
-        this.stringifyJsonField(pattern.touches),
-        pattern.alignedBaselineId ?? null,
-        pattern.status,
-        this.boolToInt(pattern.permanent),
-        pattern.supersededBy ?? null,
-        pattern.createdAt,
-        pattern.updatedAt
-      );
+      // Validate with Zod
+      PatternDefinitionSchema.parse(pattern);
 
-    return pattern;
+      this.db
+        .prepare(
+          `
+        INSERT INTO pattern_definitions (
+          id, workspace_id, project_id, pattern_key, content_hash, pattern_content,
+          failure_mode, finding_category, severity, severity_max, alternative,
+          consequence_class, carrier_stage, primary_carrier_quote_type,
+          technologies, task_types, touches, aligned_baseline_id,
+          status, permanent, superseded_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+        )
+        .run(
+          pattern.id,
+          workspaceId,
+          projectId,
+          pattern.patternKey,
+          pattern.contentHash,
+          pattern.patternContent,
+          pattern.failureMode,
+          pattern.findingCategory,
+          pattern.severity,
+          pattern.severityMax,
+          pattern.alternative,
+          pattern.consequenceClass ?? null,
+          pattern.carrierStage,
+          pattern.primaryCarrierQuoteType,
+          this.stringifyJsonField(pattern.technologies),
+          this.stringifyJsonField(pattern.taskTypes),
+          this.stringifyJsonField(pattern.touches),
+          pattern.alignedBaselineId ?? null,
+          pattern.status,
+          this.boolToInt(pattern.permanent),
+          pattern.supersededBy ?? null,
+          pattern.createdAt,
+          pattern.updatedAt
+        );
+
+      return pattern;
+    })();
   }
 
   /**
@@ -322,6 +327,30 @@ export class PatternDefinitionRepository extends BaseRepository<PatternDefinitio
     const existing = this.findById(id);
     if (!existing) return null;
 
+    // Validate alignedBaselineId if being set - must exist and be in same workspace
+    if (data.alignedBaselineId !== undefined && data.alignedBaselineId !== null) {
+      const baseline = this.db
+        .prepare(
+          `SELECT id, workspace_id FROM derived_principles WHERE id = ? AND origin = 'baseline'`
+        )
+        .get(data.alignedBaselineId) as { id: string; workspace_id: string } | undefined;
+
+      if (!baseline) {
+        throw new Error(
+          `alignedBaselineId "${data.alignedBaselineId}" does not exist or is not a baseline`
+        );
+      }
+
+      // Patterns are always project-scoped, extract workspaceId
+      const patternWorkspaceId = existing.scope.workspaceId;
+
+      if (baseline.workspace_id !== patternWorkspaceId) {
+        throw new Error(
+          `alignedBaselineId "${data.alignedBaselineId}" belongs to a different workspace`
+        );
+      }
+    }
+
     const updated: PatternDefinition = {
       ...existing,
       ...data,
@@ -369,6 +398,29 @@ export class PatternDefinitionRepository extends BaseRepository<PatternDefinitio
       );
 
     return updated;
+  }
+
+  /**
+   * Count distinct projects that have patterns matching a patternKey.
+   * Used for cross-project promotion decisions.
+   */
+  countDistinctProjects(options: {
+    workspaceId: string;
+    patternKey: string;
+    status?: 'active' | 'archived' | 'superseded';
+  }): number {
+    const statusFilter = options.status ?? 'active';
+    const row = this.db
+      .prepare(
+        `
+      SELECT COUNT(DISTINCT project_id) as count
+      FROM pattern_definitions
+      WHERE workspace_id = ? AND pattern_key = ? AND status = ?
+    `
+      )
+      .get(options.workspaceId, options.patternKey, statusFilter) as { count: number };
+
+    return row.count;
   }
 
   /**

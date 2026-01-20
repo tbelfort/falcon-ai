@@ -36,39 +36,42 @@ export function processConfidenceDecay(
   const patternRepo = new PatternDefinitionRepository(db);
   const occurrenceRepo = new PatternOccurrenceRepository(db);
 
-  const activePatterns = patternRepo.findActive({ workspaceId, projectId });
-  const archivedPatternIds: string[] = [];
-  let skippedPermanent = 0;
+  // Wrap in transaction for atomicity - either all archives succeed or none
+  return db.transaction(() => {
+    const activePatterns = patternRepo.findActive({ workspaceId, projectId });
+    const archivedPatternIds: string[] = [];
+    let skippedPermanent = 0;
 
-  for (const pattern of activePatterns) {
-    // Skip permanent patterns
-    if (pattern.permanent) {
-      skippedPermanent++;
-      continue;
+    for (const pattern of activePatterns) {
+      // Skip permanent patterns
+      if (pattern.permanent) {
+        skippedPermanent++;
+        continue;
+      }
+
+      // Compute current stats and confidence
+      const occurrences = occurrenceRepo.findByPatternId({ workspaceId, patternId: pattern.id });
+      const stats = computePatternStats(pattern.id, {
+        findByPatternId: () => occurrences,
+      });
+      const confidence = computeAttributionConfidence(pattern, stats);
+
+      // Archive if below threshold
+      if (confidence < MIN_CONFIDENCE_THRESHOLD) {
+        patternRepo.archive(pattern.id);
+        archivedPatternIds.push(pattern.id);
+        console.log(
+          `[DecayProcessor] Archived pattern ${pattern.id} (confidence: ${(confidence * 100).toFixed(1)}%)`
+        );
+      }
     }
 
-    // Compute current stats and confidence
-    const occurrences = occurrenceRepo.findByPatternId({ workspaceId, patternId: pattern.id });
-    const stats = computePatternStats(pattern.id, {
-      findByPatternId: () => occurrences,
-    });
-    const confidence = computeAttributionConfidence(pattern, stats);
-
-    // Archive if below threshold
-    if (confidence < MIN_CONFIDENCE_THRESHOLD) {
-      patternRepo.archive(pattern.id);
-      archivedPatternIds.push(pattern.id);
-      console.log(
-        `[DecayProcessor] Archived pattern ${pattern.id} (confidence: ${(confidence * 100).toFixed(1)}%)`
-      );
-    }
-  }
-
-  return {
-    archivedCount: archivedPatternIds.length,
-    archivedPatternIds,
-    skippedPermanent,
-  };
+    return {
+      archivedCount: archivedPatternIds.length,
+      archivedPatternIds,
+      skippedPermanent,
+    };
+  })();
 }
 
 /**

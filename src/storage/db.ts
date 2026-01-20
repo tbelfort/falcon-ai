@@ -25,16 +25,22 @@ let db: Database.Database | null = null;
  */
 export function getDatabase(): Database.Database {
   if (!db) {
-    // Ensure directories exist
+    // Ensure directories exist with secure permissions (owner-only access)
     if (!fs.existsSync(DB_DIR)) {
-      fs.mkdirSync(DB_DIR, { recursive: true });
+      fs.mkdirSync(DB_DIR, { recursive: true, mode: 0o700 });
     }
 
+    const dbExists = fs.existsSync(DB_PATH);
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.pragma('synchronous = NORMAL');
     db.pragma('cache_size = 20000');
+
+    // Set secure file permissions for newly created database
+    if (!dbExists) {
+      fs.chmodSync(DB_PATH, 0o600);
+    }
 
     runMigrations(db);
   }

@@ -274,15 +274,16 @@ export class KillSwitchRepository extends BaseRepository<KillSwitchStatus> {
 
     const totalInjections = injectionsWithoutRecurrence + injectionsWithRecurrence;
 
-    // Compute health scores
+    // Compute health scores - return null when no data available
+    // This prevents false state changes based on default perfect scores
     const attributionPrecisionScore =
-      totalAttributions > 0 ? verbatimAttributions / totalAttributions : 1.0;
+      totalAttributions > 0 ? verbatimAttributions / totalAttributions : null;
 
     const inferredRatio =
-      totalAttributions > 0 ? inferredAttributions / totalAttributions : 0.0;
+      totalAttributions > 0 ? inferredAttributions / totalAttributions : null;
 
     const observedImprovementRate =
-      totalInjections > 0 ? injectionsWithoutRecurrence / totalInjections : 1.0;
+      totalInjections > 0 ? injectionsWithoutRecurrence / totalInjections : null;
 
     const metrics: AttributionHealthMetrics = {
       workspaceId: options.workspaceId,
@@ -307,6 +308,7 @@ export class KillSwitchRepository extends BaseRepository<KillSwitchStatus> {
 
   /**
    * Evaluate health and return recommended state change (if any).
+   * Returns null if no change is recommended or if insufficient data.
    */
   evaluateHealth(options: {
     workspaceId: string;
@@ -315,39 +317,49 @@ export class KillSwitchRepository extends BaseRepository<KillSwitchStatus> {
     const metrics = this.computeHealthMetrics(options);
     const currentStatus = this.getStatus(options);
 
+    // Skip evaluation if insufficient data - don't make state changes on null scores
+    const hasInsufficientData =
+      metrics.attributionPrecisionScore === null ||
+      metrics.inferredRatio === null ||
+      metrics.observedImprovementRate === null;
+
+    if (hasInsufficientData) {
+      // No state changes when we don't have enough data to make decisions
+      return null;
+    }
+
+    // Now we know all metrics are non-null numbers
+    const precisionScore = metrics.attributionPrecisionScore as number;
+    const inferredRatioScore = metrics.inferredRatio as number;
+    const improvementRate = metrics.observedImprovementRate as number;
+
     // Check for critical thresholds
-    if (
-      metrics.attributionPrecisionScore <
-      HEALTH_THRESHOLDS.attributionPrecisionScore.critical
-    ) {
+    if (precisionScore < HEALTH_THRESHOLDS.attributionPrecisionScore.critical) {
       if (currentStatus.state !== 'fully_paused') {
         return {
           shouldChange: true,
           newState: 'fully_paused',
-          reason: `attributionPrecisionScore dropped to ${metrics.attributionPrecisionScore.toFixed(2)}`,
+          reason: `attributionPrecisionScore dropped to ${precisionScore.toFixed(2)}`,
         };
       }
     }
 
-    if (
-      metrics.observedImprovementRate <
-      HEALTH_THRESHOLDS.observedImprovementRate.critical
-    ) {
+    if (improvementRate < HEALTH_THRESHOLDS.observedImprovementRate.critical) {
       if (currentStatus.state !== 'fully_paused') {
         return {
           shouldChange: true,
           newState: 'fully_paused',
-          reason: `observedImprovementRate dropped to ${metrics.observedImprovementRate.toFixed(2)}`,
+          reason: `observedImprovementRate dropped to ${improvementRate.toFixed(2)}`,
         };
       }
     }
 
-    if (metrics.inferredRatio > HEALTH_THRESHOLDS.inferredRatio.critical) {
+    if (inferredRatioScore > HEALTH_THRESHOLDS.inferredRatio.critical) {
       if (currentStatus.state === 'active') {
         return {
           shouldChange: true,
           newState: 'inferred_paused',
-          reason: `inferredRatio exceeded threshold at ${metrics.inferredRatio.toFixed(2)}`,
+          reason: `inferredRatio exceeded threshold at ${inferredRatioScore.toFixed(2)}`,
         };
       }
     }
@@ -355,11 +367,9 @@ export class KillSwitchRepository extends BaseRepository<KillSwitchStatus> {
     // Check for recovery (metrics healthy + cooldown passed)
     if (currentStatus.state !== 'active') {
       const metricsHealthy =
-        metrics.attributionPrecisionScore >=
-          HEALTH_THRESHOLDS.attributionPrecisionScore.healthy &&
-        metrics.inferredRatio <= HEALTH_THRESHOLDS.inferredRatio.healthy &&
-        metrics.observedImprovementRate >=
-          HEALTH_THRESHOLDS.observedImprovementRate.healthy;
+        precisionScore >= HEALTH_THRESHOLDS.attributionPrecisionScore.healthy &&
+        inferredRatioScore <= HEALTH_THRESHOLDS.inferredRatio.healthy &&
+        improvementRate >= HEALTH_THRESHOLDS.observedImprovementRate.healthy;
 
       if (metricsHealthy && currentStatus.autoResumeAt) {
         const now = new Date();

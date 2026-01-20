@@ -751,10 +751,10 @@ export const AttributionHealthMetricsSchema = z.object({
   injectionsWithoutRecurrence: z.number().int().nonnegative(),
   injectionsWithRecurrence: z.number().int().nonnegative(),
 
-  // Computed health scores
-  attributionPrecisionScore: z.number().min(0).max(1), // verbatim / total
-  inferredRatio: z.number().min(0).max(1), // inferred / total
-  observedImprovementRate: z.number().min(0).max(1), // (without recurrence) / total
+  // Computed health scores (null when insufficient data)
+  attributionPrecisionScore: z.number().min(0).max(1).nullable(), // verbatim / total
+  inferredRatio: z.number().min(0).max(1).nullable(), // inferred / total
+  observedImprovementRate: z.number().min(0).max(1).nullable(), // (without recurrence) / total
 
   // Window metadata
   windowStartAt: z.string().datetime(),

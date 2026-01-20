@@ -208,7 +208,8 @@ export function selectWarningsForInjection(
       findingCategory: 'security',
     });
 
-    // Relevance gate: require touchOverlap >= 2 OR techOverlap >= 1
+    // Relevance gate: require touchOverlap >= 2 OR (touchOverlap >= 1 AND techOverlap >= 1)
+    // This prevents cross-project warnings from firing on only tech overlap without any touch context
     const relevantCrossPatterns = crossProjectPatterns.filter((p) => {
       const touchOverlap = p.touches.filter((t) =>
         taskProfile.touches.includes(t)
@@ -216,7 +217,7 @@ export function selectWarningsForInjection(
       const techOverlap = p.technologies.filter((t) =>
         taskProfile.technologies.includes(t)
       ).length;
-      return touchOverlap >= 2 || techOverlap >= 1;
+      return touchOverlap >= 2 || (touchOverlap >= 1 && techOverlap >= 1);
     });
 
     // Deduplication: if same patternKey exists in current project, skip

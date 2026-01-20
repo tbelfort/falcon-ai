@@ -97,7 +97,8 @@ export function computeAttributionConfidence(
 
   // Decay penalty (only if not permanent)
   if (!pattern.permanent && stats.lastSeenActive) {
-    const daysSince = daysSinceDate(stats.lastSeenActive);
+    // Guard against negative days (e.g., from timezone issues or clock skew)
+    const daysSince = Math.max(0, daysSinceDate(stats.lastSeenActive));
     // 90-day half-life, max penalty = 0.15
     const decayPenalty = Math.min(daysSince / 90, 1.0) * 0.15;
     confidence -= decayPenalty;

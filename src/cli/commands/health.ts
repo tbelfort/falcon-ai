@@ -76,61 +76,74 @@ export const healthCommand = new Command('health')
       // Health indicators
       console.log(colorize('Health Indicators:', 'bold'));
 
-      // Precision rate
-      const precisionStatus = getHealthStatus(
-        metrics.attributionPrecisionScore,
-        thresholds.attributionPrecisionScore.healthy,
-        true // higher is better
-      );
-      const precisionColor = getStatusColor(precisionStatus);
-      console.log(
-        `  Precision Score: ${precisionColor}${(metrics.attributionPrecisionScore * 100).toFixed(1)}%${colors.reset} ` +
-          `(threshold: ≥${(thresholds.attributionPrecisionScore.healthy * 100).toFixed(0)}%)`
-      );
+      // Check for insufficient data
+      const hasInsufficientData =
+        metrics.attributionPrecisionScore === null ||
+        metrics.inferredRatio === null ||
+        metrics.observedImprovementRate === null;
 
-      // Inferred rate
-      const inferredStatus = getHealthStatus(
-        metrics.inferredRatio,
-        thresholds.inferredRatio.healthy,
-        false // lower is better
-      );
-      const inferredColor = getStatusColor(inferredStatus);
-      console.log(
-        `  Inferred Ratio: ${inferredColor}${(metrics.inferredRatio * 100).toFixed(1)}%${colors.reset} ` +
-          `(threshold: ≤${(thresholds.inferredRatio.healthy * 100).toFixed(0)}%)`
-      );
-
-      // Improvement rate
-      const improvementStatus = getHealthStatus(
-        metrics.observedImprovementRate,
-        thresholds.observedImprovementRate.healthy,
-        true // higher is better
-      );
-      const improvementColor = getStatusColor(improvementStatus);
-      console.log(
-        `  Improvement Rate: ${improvementColor}${(metrics.observedImprovementRate * 100).toFixed(1)}%${colors.reset} ` +
-          `(threshold: ≥${(thresholds.observedImprovementRate.healthy * 100).toFixed(0)}%)`
-      );
-
-      console.log('');
-
-      // Overall health
-      const overallHealth = determineOverallHealth(precisionStatus, inferredStatus, improvementStatus);
-      const overallColor = getStatusColor(overallHealth);
-      console.log(`Overall Health: ${overallColor}${overallHealth.toUpperCase()}${colors.reset}`);
-
-      // Recommendations
-      if (overallHealth !== 'healthy') {
+      if (hasInsufficientData) {
+        console.log(`  ${colors.yellow}Insufficient data to compute health scores${colors.reset}`);
+        console.log(`  Total attributions: ${metrics.totalAttributions}`);
         console.log('');
-        console.log(colorize('Recommendations:', 'bold'));
-        if (precisionStatus !== 'healthy') {
-          console.log('  - Review recent patterns for false positives');
-        }
-        if (inferredStatus !== 'healthy') {
-          console.log('  - Improve Context Pack clarity to reduce inferred attributions');
-        }
-        if (improvementStatus !== 'healthy') {
-          console.log('  - Check if injected warnings are being followed');
+        console.log(`Overall Health: ${colors.yellow}UNKNOWN${colors.reset} (need more data)`);
+      } else {
+        // Precision rate
+        const precisionStatus = getHealthStatus(
+          metrics.attributionPrecisionScore!,
+          thresholds.attributionPrecisionScore.healthy,
+          true // higher is better
+        );
+        const precisionColor = getStatusColor(precisionStatus);
+        console.log(
+          `  Precision Score: ${precisionColor}${(metrics.attributionPrecisionScore! * 100).toFixed(1)}%${colors.reset} ` +
+            `(threshold: ≥${(thresholds.attributionPrecisionScore.healthy * 100).toFixed(0)}%)`
+        );
+
+        // Inferred rate
+        const inferredStatus = getHealthStatus(
+          metrics.inferredRatio!,
+          thresholds.inferredRatio.healthy,
+          false // lower is better
+        );
+        const inferredColor = getStatusColor(inferredStatus);
+        console.log(
+          `  Inferred Ratio: ${inferredColor}${(metrics.inferredRatio! * 100).toFixed(1)}%${colors.reset} ` +
+            `(threshold: ≤${(thresholds.inferredRatio.healthy * 100).toFixed(0)}%)`
+        );
+
+        // Improvement rate
+        const improvementStatus = getHealthStatus(
+          metrics.observedImprovementRate!,
+          thresholds.observedImprovementRate.healthy,
+          true // higher is better
+        );
+        const improvementColor = getStatusColor(improvementStatus);
+        console.log(
+          `  Improvement Rate: ${improvementColor}${(metrics.observedImprovementRate! * 100).toFixed(1)}%${colors.reset} ` +
+            `(threshold: ≥${(thresholds.observedImprovementRate.healthy * 100).toFixed(0)}%)`
+        );
+
+        console.log('');
+
+        // Overall health
+        const overallHealth = determineOverallHealth(precisionStatus, inferredStatus, improvementStatus);
+        const overallColor = getStatusColor(overallHealth);
+        console.log(`Overall Health: ${overallColor}${overallHealth.toUpperCase()}${colors.reset}`);
+
+        // Recommendations
+        if (overallHealth !== 'healthy') {
+          console.log('');
+          console.log(colorize('Recommendations:', 'bold'));
+          if (precisionStatus !== 'healthy') {
+            console.log('  - Review recent patterns for false positives');
+          }
+          if (inferredStatus !== 'healthy') {
+            console.log('  - Improve Context Pack clarity to reduce inferred attributions');
+          }
+          if (improvementStatus !== 'healthy') {
+            console.log('  - Check if injected warnings are being followed');
+          }
         }
       }
 

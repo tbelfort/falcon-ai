@@ -61,6 +61,10 @@ function formatWarningsSection(warnings: InjectedWarning[]): string {
     'These warnings are based on patterns learned from previous PR reviews.',
     'Pay special attention to these areas to avoid repeating past mistakes.',
     '',
+    '> **Meta-guidance notice:** These warnings are auto-generated from past issues.',
+    '> **DO NOT cite warnings as sources of truth.** Only cite:',
+    '> - Architecture documents, Code files, External specs, Design docs',
+    '',
   ];
 
   // Sort by priority (highest first)
@@ -152,9 +156,18 @@ function formatAlert(alert: ProvisionalAlert): string {
     Math.floor((new Date(alert.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
   );
   lines.push('');
-  lines.push(`**Expires in:** ${expiresIn} days`);
+  lines.push(`**Expires in:** ${formatDays(expiresIn)}`);
 
   return lines.join('\n');
+}
+
+/**
+ * Format days with proper grammar: "today" for 0, "1 day" singular, "N days" plural.
+ */
+function formatDays(days: number): string {
+  if (days === 0) return 'today';
+  if (days === 1) return '1 day';
+  return `${days} days`;
 }
 
 function truncate(text: string, maxLen: number): string {

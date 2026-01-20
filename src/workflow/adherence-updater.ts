@@ -6,11 +6,12 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import type { FindingCategory, PatternDefinition } from '../schemas/index.js';
+import type { PatternDefinition } from '../schemas/index.js';
 import type { ConfirmedFinding, PRReviewResult } from './pr-review-hook.js';
 import { InjectionLogRepository } from '../storage/repositories/injection-log.repo.js';
 import { PatternOccurrenceRepository } from '../storage/repositories/pattern-occurrence.repo.js';
 import { PatternDefinitionRepository } from '../storage/repositories/pattern-definition.repo.js';
+import { mapScoutToCategory } from '../utils/category-mapping.js';
 
 export interface AdherenceUpdateResult {
   updated: number;
@@ -113,20 +114,4 @@ function extractKeywords(text: string): string[] {
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter((w) => w.length > 3);
-}
-
-/**
- * Map scout type to finding category.
- */
-function mapScoutToCategory(scoutType: string): FindingCategory {
-  const mapping: Record<string, FindingCategory> = {
-    adversarial: 'security',
-    security: 'security',
-    bugs: 'correctness',
-    tests: 'testing',
-    docs: 'compliance',
-    spec: 'compliance',
-    decisions: 'decisions',
-  };
-  return mapping[scoutType] || 'correctness';
 }

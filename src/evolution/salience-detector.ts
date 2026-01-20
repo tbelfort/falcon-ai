@@ -87,7 +87,10 @@ export function detectSalienceIssues(
         }
       } else if (!activeIssue) {
         // Create new salience issue via upsert
-        // Note: noncomplianceIds is provided for type satisfaction but overwritten by upsert
+        // NOTE: Schema divergence - noncomplianceIds is typed to expect ExecutionNoncompliance IDs
+        // (cases where agents ignored CORRECT guidance), but here we're tracking pattern occurrences
+        // (cases where injected WARNINGS weren't adhered to). This is intentional: both represent
+        // "ignored guidance" scenarios that warrant salience review. The field stores occurrence IDs.
         const issue = salienceRepo.upsert(
           {
             workspaceId,
@@ -97,10 +100,10 @@ export function detectSalienceIssues(
             guidanceExcerpt: pattern.patternContent,
             occurrenceCount: recentViolations.length,
             windowDays: SALIENCE_WINDOW_DAYS,
-            noncomplianceIds: [],
+            noncomplianceIds: recentViolations.map((v) => v.id), // Pattern occurrence IDs (see note above)
             status: 'pending',
           },
-          recentViolations[0].id // Link to first violation (occurrence ID used as reference)
+          recentViolations[0].id // Link to first violation
         );
         newIssueIds.push(issue.id);
         console.log(
