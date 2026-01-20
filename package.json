@@ -84,6 +84,6 @@
     "multi-agent",
     "cli"
   ],
-  "author": "",
-  "license": "MIT"
+  "author": "Tom Belfort",
+  "license": "AGPL-3.0-or-later"
 }
