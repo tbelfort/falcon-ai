@@ -72,7 +72,10 @@ export function resolveScope(): ResolvedScope {
   let repoOriginUrl: string | null = null;
 
   try {
-    repoOriginUrl = execSync('git remote get-url origin', { encoding: 'utf-8' }).trim();
+    repoOriginUrl = execSync('git remote get-url origin', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
     canonicalUrl = canonicalizeGitUrl(repoOriginUrl);
   } catch {
     // No remote - try local path identifier

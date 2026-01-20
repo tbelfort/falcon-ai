@@ -150,7 +150,7 @@ export const initCommand = new Command('init')
       workspaceName = workspace.name;
     } else {
       // Create new workspace (auto-generate)
-      const defaultSlug = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const defaultSlug = projectName.toLowerCase().replace(/[^a-z0-9_]/g, '-');
       workspaceSlug = defaultSlug;
       workspaceName = projectName;
       workspaceId = randomUUID();
