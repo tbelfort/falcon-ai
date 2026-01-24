@@ -74,13 +74,15 @@ Each app is designed to be:
 
 | App | Type | Key Risk Areas | Expected Touches |
 |-----|------|----------------|------------------|
-| 1 | Inventory CLI | SQL injection, input validation, file handling | database, user_input, config |
-| 2 | Data Sync CLI | PII logging, retry logic, error handling | network, logging, database |
-| 3 | Credential Manager CLI | Password handling, secure storage, credential exposure | auth, config, user_input, logging |
-| 4 | Log Analyzer CLI | Input validation, file path handling, data parsing | user_input, logging, config |
-| 5 | User Admin CLI | Authorization, audit logging, data exposure | authz, logging, database, user_input |
+| 1 | Warehouse Inventory CLI | SQL injection, input validation, file handling | database, user_input, config |
+| 2 | Personal Finance Tracker CLI | SQL injection, input validation, transaction handling | database, user_input, config |
+| 3 | Note-taking/Wiki CLI | SQL injection, path traversal, file permissions, FTS | database, user_input, config, filesystem |
+| 4 | Task Manager CLI | SQL injection, input validation, date handling | database, user_input, config |
+| 5 | Contact Book CLI | SQL injection, input validation, export handling | database, user_input, config |
 
-See `apps/APP_1_INVENTORY_CLI.md` through `apps/APP_5_USER_ADMIN_CLI.md` for detailed requirements.
+See `apps/app1/` through `apps/app5/` directories for detailed documentation (design docs, systems docs, and task files).
+
+**Note:** The original spec files (`APP_1_INVENTORY_CLI.md` through `APP_5_USER_ADMIN_CLI.md`) represent the original test plan. The `app1/` through `app5/` directories contain the actual implementations which differ from the original specs. This test plan uses the actual implementations.
 
 ### Why CLIs?
 - Easy to test: run command, check exit code and output
@@ -144,41 +146,45 @@ If Phase 1 shows positive signal, run App 6 (new app) with all patterns learned 
 
 ## 5. Linear Issue Creation
 
+### Linear Team
+**Team:** `FALT` (Falcon Test)
+
 ### For Each App, Create 10 Issues:
+
+**Issue Naming Convention:**
+```
+Title: [test_id] {App Title}
+```
+- Test ID in brackets for tracking: `[app1_treatment_1]`, `[app3_control_2]`
+- Followed by natural task title from the app spec
+- Description contains ONLY the app spec - NO test configuration or metadata
+- The agent working on the issue should not know it's being tested
+
+**Examples:**
+- `[app1_treatment_1] Warehouse Inventory CLI`
+- `[app2_control_3] Data Sync Tool`
+- `[app5_treatment_5] User Admin CLI`
 
 **Treatment Issues (T1-T5):**
 ```
-Title: [FALCON-TEST] {App Name} - Treatment Run {N}
+Title: [app{A}_treatment_{N}] {App Title from spec}
+Team: FALT
 Labels: falcon_test, treatment, app_{A}, run_{N}
-Description: {Copy from apps/APP_{A}.md}
-
-Add to description footer:
----
-## Test Configuration
-- Falcon Injection: ENABLED
-- App: {A}
-- Run: T{N}
-- Test Run ID: {generate UUID}
-- Accumulates From: {T1...T(N-1) issue IDs, or "None" for T1}
+Description: {Copy from apps/APP_{A}.md - pure spec only, no test metadata}
 ```
 
 **Control Issues (C1-C5):**
 ```
-Title: [FALCON-TEST] {App Name} - Control Run {N}
+Title: [app{A}_control_{N}] {App Title from spec}
+Team: FALT
 Labels: falcon_test, control, app_{A}, run_{N}
-Description: {Copy from apps/APP_{A}.md}
-
-Add to description footer:
----
-## Test Configuration
-- Falcon Injection: DISABLED
-- App: {A}
-- Run: C{N}
-- Test Run ID: {generate UUID}
+Description: {Copy from apps/APP_{A}.md - pure spec only, no test metadata}
 ```
 
+**Important:** Test configuration (Falcon enabled/disabled, accumulation sources) is tracked externally by the test harness, NOT in the Linear issue. This keeps the test blind to the agent.
+
 ### Linear Project Setup
-1. Create project: "Falcon Validation Test"
+1. Team: `FALT` (already created)
 2. Create label: `falcon_test`
 3. Create labels: `treatment`, `control`
 4. Create labels: `app_1`, `app_2`, `app_3`, `app_4`, `app_5`
@@ -365,11 +371,19 @@ No special instructions. Run normally. The test harness controls whether Falcon 
 falcon_test/
 ├── TEST_PLAN.md              # This file
 ├── apps/
-│   ├── APP_1_INVENTORY_CLI.md
-│   ├── APP_2_DATA_SYNC_CLI.md
-│   ├── APP_3_CREDENTIAL_MANAGER_CLI.md
-│   ├── APP_4_LOG_ANALYZER_CLI.md
-│   └── APP_5_USER_ADMIN_CLI.md
+│   ├── app1/                 # Warehouse Inventory CLI (documentation + tasks)
+│   │   ├── docs/design/      # Design documentation
+│   │   ├── docs/systems/     # Systems documentation
+│   │   └── tasks/            # Implementation task files
+│   ├── app2/                 # Personal Finance Tracker CLI
+│   ├── app3/                 # Note-taking/Wiki CLI
+│   ├── app4/                 # Task Manager CLI
+│   ├── app5/                 # Contact Book CLI
+│   ├── APP_1_INVENTORY_CLI.md     # Original spec (reference only)
+│   ├── APP_2_DATA_SYNC_CLI.md     # Original spec (reference only)
+│   ├── APP_3_CREDENTIAL_MANAGER_CLI.md  # Original spec (reference only)
+│   ├── APP_4_LOG_ANALYZER_CLI.md  # Original spec (reference only)
+│   └── APP_5_USER_ADMIN_CLI.md    # Original spec (reference only)
 └── results/
     ├── APP_1_results.md      # Raw data + analysis for App 1
     ├── APP_2_results.md

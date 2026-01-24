@@ -376,7 +376,7 @@ The PR Review workflow uses specialized agents:
 | Command | File | Purpose |
 |---------|------|---------|
 | checkout | `.claude/commands/checkout.md` | Start work on an issue |
-| doc-review | `.claude/commands/doc-review.md` | Review documentation |
+| pr-doc-check | `.claude/commands/pr-doc-check.md` | Check if PR needs doc updates |
 | merge | `.claude/commands/pm/merge.md` | Merge approved PRs |
 | build_sprint | `.claude/commands/pm/build_sprint.md` | Create sprint from backlog |
 | code-review | `.claude/commands/pm/code-review.md` | Trigger code review |
@@ -505,7 +505,8 @@ your-project/
 │   └── CORE/
 │       ├── TASKS/WORKFLOW/  # Workflow stages (checkout, spec, implement, etc.)
 │       ├── ROLES/           # Agent roles (PM, architect, QA, etc.)
-│       └── TEMPLATES/       # Document templates
+│       ├── TEMPLATES/       # Document templates
+│       └── skills/          # Reusable skills
 │
 └── .claude/
     ├── commands/            # User-invokable commands
@@ -517,11 +518,12 @@ your-project/
 ```
 falcon-ai/
 ├── CORE/                    # Source files (copied during init)
-│   ├── TASKS/WORKFLOW/
-│   ├── ROLES/
-│   ├── agents/
-│   ├── commands/
-│   └── TEMPLATES/
+│   ├── TASKS/WORKFLOW/      # Workflow stages
+│   ├── ROLES/               # Agent roles
+│   ├── agents/              # Scout and judge agents
+│   ├── commands/            # User commands
+│   ├── skills/              # Reusable skills
+│   └── TEMPLATES/           # Document templates
 │
 ├── src/
 │   ├── cli/                 # Command-line interface

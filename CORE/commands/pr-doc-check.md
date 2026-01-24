@@ -20,7 +20,7 @@ If a PR changes how the system works, where things live, or why decisions were m
 
 If `$ARGUMENTS` is empty or not a number, STOP and report:
 ```
-Error: Missing PR number. Usage: /doc-review <pr-number>
+Error: Missing PR number. Usage: /pr-doc-check <pr-number>
 ```
 
 ## Step 1: Get PR Context

@@ -33,6 +33,26 @@ Parse the response to extract:
 - **state** (workflow state)
 - **project** (Linear project name)
 - **labels** (array of label names)
+- **title** (issue title)
+- **description** (issue description, if available)
+
+---
+
+## Step 1.1: Set Injection Context
+
+Update Falcon context for automatic warning injection. This ensures relevant security and quality warnings are injected into future prompts.
+
+```bash
+falcon set-context $ISSUE_ID --state "$STATE" --title "$TITLE" --labels "$LABELS"
+```
+
+Where:
+- `$ISSUE_ID` — The issue identifier (e.g., `FALT-2`)
+- `$STATE` — The workflow state (e.g., `Todo`, `Ready for Spec`)
+- `$TITLE` — The issue title (for TaskProfile extraction)
+- `$LABELS` — Comma-separated labels (for TaskProfile extraction)
+
+**Note:** This is required for the Falcon warning injection system to work. If this step fails silently (project not initialized), warnings won't be injected but workflow continues.
 
 ---
 
