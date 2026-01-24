@@ -269,9 +269,12 @@ export const initCommand = new Command('init')
 
     console.log('Installed CORE files to .falcon/ and .claude/');
 
+    // STEP 8.5: Install Claude Code hooks for automatic warning injection
+    installClaudeHooks(claudeDir);
+
     // STEP 9: Suggest .gitignore update
     const gitignorePath = path.join(gitRoot, '.gitignore');
-    const gitignoreEntries = ['.falcon/', '.claude/commands/', '.claude/agents/'];
+    const gitignoreEntries = ['.falcon/', '.claude/commands/', '.claude/agents/', '.claude/settings.json'];
 
     if (fs.existsSync(gitignorePath)) {
       const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
@@ -328,5 +331,82 @@ function copyDirRecursive(src: string, dest: string): void {
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
+  }
+}
+
+/**
+ * Install Claude Code hooks for automatic warning injection.
+ *
+ * Creates or updates .claude/settings.json with UserPromptSubmit hook
+ * that calls `falcon inject --format claude-hook`.
+ */
+function installClaudeHooks(claudeDir: string): void {
+  const settingsPath = path.join(claudeDir, 'settings.json');
+
+  // Define the Falcon injection hook
+  const falconHook = {
+    type: 'command',
+    command: 'falcon inject --format claude-hook 2>/dev/null || true',
+  };
+
+  // Load existing settings or create new
+  let settings: Record<string, unknown> = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const content = fs.readFileSync(settingsPath, 'utf-8');
+      settings = JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      // Invalid JSON, start fresh
+      settings = {};
+    }
+  }
+
+  // Get or create hooks configuration
+  let hooks = settings.hooks as Record<string, unknown[]> | undefined;
+  if (!hooks || typeof hooks !== 'object') {
+    hooks = {};
+  }
+
+  // Get or create UserPromptSubmit hooks array
+  let userPromptHooks = hooks.UserPromptSubmit as unknown[];
+  if (!Array.isArray(userPromptHooks)) {
+    userPromptHooks = [];
+  }
+
+  // Check if falcon hook already exists
+  const hasFalconHook = userPromptHooks.some((hook) => {
+    if (typeof hook === 'object' && hook !== null) {
+      const h = hook as Record<string, unknown>;
+      // Check both top-level command and nested hooks array
+      if (h.command && typeof h.command === 'string' && h.command.includes('falcon inject')) {
+        return true;
+      }
+      if (Array.isArray(h.hooks)) {
+        return h.hooks.some((inner) => {
+          if (typeof inner === 'object' && inner !== null) {
+            const i = inner as Record<string, unknown>;
+            return i.command && typeof i.command === 'string' && i.command.includes('falcon inject');
+          }
+          return false;
+        });
+      }
+    }
+    return false;
+  });
+
+  if (!hasFalconHook) {
+    // Add the hook wrapped in a hooks array (Claude Code format)
+    userPromptHooks.push({
+      hooks: [falconHook],
+    });
+    hooks.UserPromptSubmit = userPromptHooks;
+    settings.hooks = hooks;
+
+    // Write updated settings
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    console.log('Installed Claude Code hook for automatic warning injection.');
+  } else {
+    console.log('Claude Code hook already configured.');
   }
 }

@@ -1,0 +1,1 @@
+../../CORE/commands/pr-doc-check.md
