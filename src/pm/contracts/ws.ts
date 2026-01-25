@@ -1,48 +1,70 @@
-import type { AgentStatus, IssueStage } from '../core/types.js';
+import type {
+  CommentDto,
+  DocumentDto,
+  IssueDto,
+  LabelDto,
+  ProjectDto,
+} from './http.js';
 
 export type WsEventType =
+  | 'project.created'
+  | 'project.updated'
+  | 'project.deleted'
   | 'issue.created'
   | 'issue.updated'
-  | 'issue.stage.changed'
+  | 'issue.deleted'
   | 'comment.created'
-  | 'agent.status.changed';
+  | 'label.created'
+  | 'document.created';
 
-export interface WsEnvelope<TPayload = unknown> {
-  type: WsEventType;
+export interface WsEventBase<TType extends WsEventType, TPayload> {
+  type: TType;
+  at: number;
+  projectId: string;
   payload: TPayload;
 }
 
-export interface IssueStageChangedPayload {
+export interface ProjectEvent extends WsEventBase<
+  'project.created' | 'project.updated' | 'project.deleted',
+  ProjectDto
+> {}
+
+export interface IssueEvent extends WsEventBase<
+  'issue.created' | 'issue.updated' | 'issue.deleted',
+  IssueDto
+> {
   issueId: string;
-  projectId: string;
-  fromStage: IssueStage;
-  toStage: IssueStage;
-  changedAt: number;
 }
 
-export interface IssueUpdatedPayload {
+export interface CommentCreatedEvent
+  extends WsEventBase<'comment.created', CommentDto> {
   issueId: string;
-  projectId: string;
-  status?: string;
-  stage?: IssueStage;
-  updatedAt: number;
 }
 
-export interface CommentCreatedPayload {
-  issueId: string;
-  commentId: string;
-  createdAt: number;
-}
+export interface LabelCreatedEvent
+  extends WsEventBase<'label.created', LabelDto> {}
 
-export interface AgentStatusChangedPayload {
-  agentId: string;
-  projectId: string;
-  status: AgentStatus;
-  changedAt: number;
+export interface DocumentCreatedEvent
+  extends WsEventBase<'document.created', DocumentDto> {
+  issueId: string;
 }
 
 export type WsEvent =
-  | WsEnvelope<IssueStageChangedPayload>
-  | WsEnvelope<IssueUpdatedPayload>
-  | WsEnvelope<CommentCreatedPayload>
-  | WsEnvelope<AgentStatusChangedPayload>;
+  | ProjectEvent
+  | IssueEvent
+  | CommentCreatedEvent
+  | LabelCreatedEvent
+  | DocumentCreatedEvent;
+
+export type WsServerMessage =
+  | { type: 'connected'; clientId: string }
+  | { type: 'subscribed'; channel: string }
+  | { type: 'unsubscribed'; channel: string }
+  | { type: 'pong' }
+  | { type: 'event'; channel: string; event: WsEventType; data: WsEvent }
+  | { type: 'error'; message: string };
+
+export type WsClientMessage =
+  | { type: 'subscribe'; channel: string }
+  | { type: 'unsubscribe'; channel: string }
+  | { type: 'ping' };
