@@ -103,4 +103,34 @@ describe('pm api issues', () => {
     expect(updateResponse.status).toBe(400);
     expect(updateResponse.body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('rejects starting issues outside backlog/todo', async () => {
+    const projectResponse = await request(app).post('/api/projects').send({
+      name: 'Start Guard',
+      slug: 'start-guard',
+      description: null,
+      repoUrl: null,
+      defaultBranch: 'main',
+    });
+    const projectId = projectResponse.body.data.id;
+
+    const issueResponse = await request(app).post('/api/issues').send({
+      projectId,
+      title: 'Guarded start',
+      description: null,
+      priority: 'medium',
+    });
+
+    const transitionResponse = await request(app)
+      .post(`/api/issues/${issueResponse.body.data.id}/transition`)
+      .send({ toStage: 'SPEC' });
+    expect(transitionResponse.status).toBe(200);
+
+    const startResponse = await request(app)
+      .post(`/api/issues/${issueResponse.body.data.id}/start`)
+      .send({ presetId: 'preset-1' });
+
+    expect(startResponse.status).toBe(400);
+    expect(startResponse.body.error.code).toBe('INVALID_TRANSITION');
+  });
 });

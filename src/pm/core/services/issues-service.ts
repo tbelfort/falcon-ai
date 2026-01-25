@@ -1,11 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type {
-  IssueDto,
-  IssuePriority,
-  IssueStatus,
-  LabelDto,
-} from '../../contracts/http.js';
+import type { IssueDto, IssuePriority, LabelDto } from '../../contracts/http.js';
 import type { IssueStage } from '../types.js';
 import type { IssueRepo, LabelRepo, ProjectRepo, IssueRecord } from '../repos/index.js';
 import { canTransition } from '../stage-machine.js';
@@ -149,7 +144,10 @@ export class IssuesService {
       return err({ code: 'NOT_FOUND', message: 'Issue not found.' });
     }
 
-    if (!isStartable(issue.status, issue.stage)) {
+    if (
+      (issue.status !== 'backlog' && issue.status !== 'todo') ||
+      (issue.stage !== 'BACKLOG' && issue.stage !== 'TODO')
+    ) {
       return err({
         code: 'INVALID_TRANSITION',
         message: 'Issue is not in a startable state.',
@@ -220,13 +218,6 @@ export class IssuesService {
       labels: sortLabels(issue.labelIds, labels),
     };
   }
-}
-
-function isStartable(status: IssueStatus, stage: IssueStage): boolean {
-  return (
-    (status === 'backlog' || status === 'todo') &&
-    (stage === 'BACKLOG' || stage === 'TODO')
-  );
 }
 
 function buildBranchName(number: number, title: string): string {
