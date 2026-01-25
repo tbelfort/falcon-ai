@@ -10,6 +10,7 @@ export type ApiErrorCode = ServiceErrorCode;
 export const HTTP_STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   NOT_FOUND: 404,
   VALIDATION_ERROR: 400,
+  UNAUTHORIZED: 401,
   CONFLICT: 409,
   AGENT_BUSY: 409,
   INVALID_TRANSITION: 400,

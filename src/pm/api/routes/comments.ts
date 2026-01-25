@@ -2,7 +2,12 @@ import { Router } from 'express';
 import type { CommentAuthorType } from '../../core/types.js';
 import type { ApiContext } from '../context.js';
 import { asyncHandler } from '../async-handler.js';
-import { optionalString, requireEnum, requireString } from '../validation.js';
+import {
+  optionalString,
+  requireEnum,
+  requireString,
+  STRING_LIMITS,
+} from '../validation.js';
 
 const AUTHOR_TYPES: CommentAuthorType[] = ['agent', 'human'];
 
@@ -23,10 +28,16 @@ export function createCommentsRouter(context: ApiContext): Router {
     asyncHandler((req, res) => {
       const issueId = req.params.id as string;
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const content = requireString(body.content, 'content');
+      const content = requireString(body.content, 'content', {
+        maxLength: STRING_LIMITS.commentContent,
+      });
       const authorType = requireEnum(body.authorType, 'authorType', AUTHOR_TYPES);
-      const authorName = requireString(body.authorName, 'authorName');
-      const parentId = optionalString(body.parentId, 'parentId');
+      const authorName = requireString(body.authorName, 'authorName', {
+        maxLength: STRING_LIMITS.commentAuthorName,
+      });
+      const parentId = optionalString(body.parentId, 'parentId', {
+        maxLength: STRING_LIMITS.id,
+      });
 
       const issue = context.services.issues.getIssue(issueId);
       const comment = context.services.comments.createComment(issueId, {

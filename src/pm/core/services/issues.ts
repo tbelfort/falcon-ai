@@ -199,11 +199,17 @@ export function createIssueService(
       });
     }
 
+    const timestamp = now();
     const updated: Issue = {
       ...issue,
       stage: toStage,
-      updatedAt: now(),
+      updatedAt: timestamp,
     };
+
+    if (toStage === 'DONE') {
+      updated.status = 'done';
+      updated.completedAt = timestamp;
+    }
 
     return repos.issues.update(updated);
   };

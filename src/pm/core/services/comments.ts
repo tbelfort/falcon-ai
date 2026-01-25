@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Comment } from '../types.js';
 import type { CommentRepository } from '../repos/comments-repo.js';
 import type { IssueRepository } from '../repos/issues-repo.js';
-import { notFoundError } from './errors.js';
+import { notFoundError, validationError } from './errors.js';
 
 export interface CreateCommentInput {
   content: string;
@@ -32,6 +32,19 @@ export function createCommentService(
     const issue = repos.issues.getById(issueId);
     if (!issue) {
       throw notFoundError('Issue not found', { issueId });
+    }
+
+    if (input.parentId) {
+      const parent = repos
+        .comments
+        .listByIssue(issueId)
+        .find((comment) => comment.id === input.parentId);
+      if (!parent) {
+        throw validationError('Parent comment not found', {
+          issueId,
+          parentId: input.parentId,
+        });
+      }
     }
 
     const timestamp = now();

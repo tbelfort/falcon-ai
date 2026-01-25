@@ -5,14 +5,17 @@ import { createInMemoryRepos } from '../../../src/pm/core/testing/in-memory-repo
 
 describe('PM API projects', () => {
   let app: ReturnType<typeof createApiApp>;
+  const authToken = 'test-token';
+  const authHeader = { Authorization: `Bearer ${authToken}` };
 
   beforeEach(() => {
-    app = createApiApp({ repos: createInMemoryRepos() });
+    app = createApiApp({ repos: createInMemoryRepos(), authToken });
   });
 
   it('creates, lists, retrieves, updates, and deletes projects', async () => {
     const createResponse = await request(app)
       .post('/api/projects')
+      .set(authHeader)
       .send({
         name: 'My Project',
         slug: 'my-project',
@@ -29,16 +32,21 @@ describe('PM API projects', () => {
     expect(created.config).toEqual({});
     expect(typeof created.id).toBe('string');
 
-    const listResponse = await request(app).get('/api/projects').expect(200);
+    const listResponse = await request(app)
+      .get('/api/projects')
+      .set(authHeader)
+      .expect(200);
     expect(listResponse.body.data).toHaveLength(1);
 
     const getResponse = await request(app)
       .get(`/api/projects/${created.id}`)
+      .set(authHeader)
       .expect(200);
     expect(getResponse.body.data.id).toBe(created.id);
 
     const updateResponse = await request(app)
       .patch(`/api/projects/${created.id}`)
+      .set(authHeader)
       .send({ name: 'Renamed Project', description: 'Updated' })
       .expect(200);
     expect(updateResponse.body.data.name).toBe('Renamed Project');
@@ -46,10 +54,12 @@ describe('PM API projects', () => {
 
     await request(app)
       .delete(`/api/projects/${created.id}`)
+      .set(authHeader)
       .expect(200);
 
     const afterDelete = await request(app)
       .get(`/api/projects/${created.id}`)
+      .set(authHeader)
       .expect(404);
     expect(afterDelete.body.error.code).toBe('NOT_FOUND');
   });

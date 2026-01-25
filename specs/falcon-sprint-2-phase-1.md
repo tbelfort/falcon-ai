@@ -47,10 +47,25 @@ Use these codes consistently:
 |------|------|
 | `NOT_FOUND` | 404 |
 | `VALIDATION_ERROR` | 400 |
+| `UNAUTHORIZED` | 401 |
 | `CONFLICT` | 409 |
 | `AGENT_BUSY` | 409 |
 | `INVALID_TRANSITION` | 400 |
 | `INTERNAL_ERROR` | 500 |
+
+### Security & Validation (Authoritative)
+
+- All HTTP requests MUST include an auth token (`Authorization: Bearer <token>` or `X-API-Key`), configured via `PM_API_TOKEN`.
+- WebSocket connections MUST include the same token (query param `?token=` or auth header) and validate origin against `PM_API_ALLOWED_ORIGINS`.
+- CORS MUST use explicit allowed origins from `PM_API_ALLOWED_ORIGINS` (comma-separated); originless requests are allowed for non-browser clients.
+- Request bodies MUST be limited to 1MB.
+- Strings MUST be trimmed; required strings reject empty/whitespace-only input.
+- Optional strings MUST reject empty input; use `null` to clear nullable fields.
+- Numbers MUST be finite (`Number.isFinite`); integer/range checks apply where defined.
+- PATCH semantics MUST only update fields present in the JSON body (use `hasOwnProperty` checks).
+- Project `config` MUST be a plain JSON object (no functions/Date/etc); forbidden keys (`__proto__`, `constructor`, `prototype`) MUST be rejected.
+- Document `filePath` MUST be relative and MUST NOT include `..` segments or backslashes.
+- WebSocket payloads MUST be capped at 64KB; connections per IP capped at 20; subscriptions per client capped at 100.
 
 ### JSON Shapes (Authoritative DTOs)
 
@@ -280,6 +295,7 @@ Issues:
 - `POST /api/issues`
 - `GET /api/issues/:id`
 - `PATCH /api/issues/:id` (supports `labelIds` in body)
+- `DELETE /api/issues/:id`
 - `POST /api/issues/:id/start` (human action: select preset)
 - `POST /api/issues/:id/transition` (validate via `canTransition()` from `src/pm/core/stage-machine.ts`, then persist)
 
@@ -348,9 +364,14 @@ Request (all fields optional; only provided fields are updated):
 
 Rules:
 - `labelIds` replaces the issue's labels exactly (idempotent)
+- `labelIds` are deduplicated before validation
 - all `labelIds` must exist and belong to the issue's project
 
 Response: updated `IssueDto`
+
+### `DELETE /api/issues/:id`
+
+Response: deleted `IssueDto`
 
 ### `POST /api/issues/:id/start`
 
@@ -368,7 +389,7 @@ Behavior (Phase 1):
   - `issues.status = "in_progress"`
   - `issues.stage = "CONTEXT_PACK"`
   - `issues.started_at = unixepoch()`
-  - `issues.branch_name` to a deterministic slug: `issue/<number>-<kebab-title>`
+  - `issues.branch_name` to a deterministic slug: `issue/<number>-<kebab-title>` (lowercase, replace non `a-z0-9` with `-`, trim leading/trailing `-`)
 - Emits WS `issue.updated` on `project:<projectId>` and `issue:<issueId>`
 
 Response:
@@ -426,7 +447,7 @@ Each event must include:
 
 Use `supertest` against the Express app instance:
 - create + list + get + update + delete project
-- create issue under project; list issues by projectId
+- create issue under project; list issues by projectId; get + delete issue
 - validation failures return `{ error: { code: 'VALIDATION_ERROR', ... } }`
 
 ### WS Events
@@ -447,6 +468,8 @@ Required scripts to add to root `package.json`:
 Run:
 
 ```bash
+export PM_API_TOKEN=local-dev-token
+export PM_API_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 npm test
 npm run pm:api:dev
 ```

@@ -6,7 +6,10 @@ import {
   optionalNumber,
   optionalString,
   requireEnum,
+  requireSafePath,
   requireString,
+  NUMBER_LIMITS,
+  STRING_LIMITS,
 } from '../validation.js';
 
 const DOCUMENT_TYPES: DocumentType[] = [
@@ -33,12 +36,24 @@ export function createDocumentsRouter(context: ApiContext): Router {
     asyncHandler((req, res) => {
       const issueId = req.params.id as string;
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const title = requireString(body.title, 'title');
+      const title = requireString(body.title, 'title', {
+        maxLength: STRING_LIMITS.documentTitle,
+      });
       const docType = requireEnum(body.docType, 'docType', DOCUMENT_TYPES);
-      const filePath = requireString(body.filePath, 'filePath');
-      const contentHash = optionalString(body.contentHash, 'contentHash');
-      const version = optionalNumber(body.version, 'version');
-      const createdBy = optionalString(body.createdBy, 'createdBy');
+      const filePath = requireSafePath(body.filePath, 'filePath', {
+        maxLength: STRING_LIMITS.documentFilePath,
+      });
+      const contentHash = optionalString(body.contentHash, 'contentHash', {
+        maxLength: STRING_LIMITS.documentContentHash,
+      });
+      const version = optionalNumber(body.version, 'version', {
+        min: 1,
+        max: NUMBER_LIMITS.documentVersionMax,
+        integer: true,
+      });
+      const createdBy = optionalString(body.createdBy, 'createdBy', {
+        maxLength: STRING_LIMITS.documentCreatedBy,
+      });
 
       const issue = context.services.issues.getIssue(issueId);
       const document = context.services.documents.createDocument(issueId, {

@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import type { ApiContext } from '../context.js';
 import { asyncHandler } from '../async-handler.js';
-import { optionalString, requireString } from '../validation.js';
+import {
+  optionalString,
+  requireJsonObject,
+  requireString,
+  STRING_LIMITS,
+} from '../validation.js';
 import type { UpdateProjectInput } from '../../core/services/projects.js';
 
 export function createProjectsRouter(context: ApiContext): Router {
@@ -20,13 +25,23 @@ export function createProjectsRouter(context: ApiContext): Router {
     '/',
     asyncHandler((req, res) => {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const name = requireString(body.name, 'name');
-      const slug = requireString(body.slug, 'slug');
-      const description = optionalString(body.description, 'description');
-      const repoUrl = optionalString(body.repoUrl, 'repoUrl');
-      const defaultBranch = requireString(body.defaultBranch, 'defaultBranch');
+      const name = requireString(body.name, 'name', {
+        maxLength: STRING_LIMITS.projectName,
+      });
+      const slug = requireString(body.slug, 'slug', {
+        maxLength: STRING_LIMITS.projectSlug,
+      });
+      const description = optionalString(body.description, 'description', {
+        maxLength: STRING_LIMITS.projectDescription,
+      });
+      const repoUrl = optionalString(body.repoUrl, 'repoUrl', {
+        maxLength: STRING_LIMITS.repoUrl,
+      });
+      const defaultBranch = requireString(body.defaultBranch, 'defaultBranch', {
+        maxLength: STRING_LIMITS.defaultBranch,
+      });
       const config = Object.prototype.hasOwnProperty.call(body, 'config')
-        ? body.config
+        ? requireJsonObject(body.config, 'config')
         : undefined;
 
       const project = context.services.projects.createProject({
@@ -66,33 +81,43 @@ export function createProjectsRouter(context: ApiContext): Router {
       const update: UpdateProjectInput = {};
 
       if (Object.prototype.hasOwnProperty.call(body, 'name')) {
-        update.name = requireString(body.name, 'name');
+        update.name = requireString(body.name, 'name', {
+          maxLength: STRING_LIMITS.projectName,
+        });
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'slug')) {
-        update.slug = requireString(body.slug, 'slug');
+        update.slug = requireString(body.slug, 'slug', {
+          maxLength: STRING_LIMITS.projectSlug,
+        });
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'description')) {
-        const description = optionalString(body.description, 'description');
+        const description = optionalString(body.description, 'description', {
+          maxLength: STRING_LIMITS.projectDescription,
+        });
         if (description !== undefined) {
           update.description = description;
         }
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'repoUrl')) {
-        const repoUrl = optionalString(body.repoUrl, 'repoUrl');
+        const repoUrl = optionalString(body.repoUrl, 'repoUrl', {
+          maxLength: STRING_LIMITS.repoUrl,
+        });
         if (repoUrl !== undefined) {
           update.repoUrl = repoUrl;
         }
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'defaultBranch')) {
-        update.defaultBranch = requireString(body.defaultBranch, 'defaultBranch');
+        update.defaultBranch = requireString(body.defaultBranch, 'defaultBranch', {
+          maxLength: STRING_LIMITS.defaultBranch,
+        });
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'config')) {
-        update.config = body.config;
+        update.config = requireJsonObject(body.config, 'config');
       }
 
       const projectId = req.params.id as string;

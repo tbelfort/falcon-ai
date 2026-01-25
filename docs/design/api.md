@@ -12,9 +12,15 @@ http://localhost:3002/api
 
 ## Authentication
 
-For local development, authentication is minimal. The API accepts:
-- `X-Agent-ID` header for agent-facing endpoints
-- Future: JWT tokens for multi-user support
+All API requests require a shared token.
+
+- Set `PM_API_TOKEN` in the environment
+- Send `Authorization: Bearer <token>` (preferred) or `X-API-Key: <token>`
+- WebSocket clients pass the same token via `ws://.../ws?token=<token>`
+
+## CORS
+
+Allowed origins are configured via `PM_API_ALLOWED_ORIGINS` (comma-separated). Originless requests are allowed for non-browser clients.
 
 ## Response Format
 
@@ -47,6 +53,7 @@ All responses follow this structure:
 |------|-------------|-------------|
 | `NOT_FOUND` | 404 | Resource not found |
 | `VALIDATION_ERROR` | 400 | Request validation failed |
+| `UNAUTHORIZED` | 401 | Missing or invalid auth token |
 | `CONFLICT` | 409 | Resource conflict (duplicate) |
 | `AGENT_BUSY` | 409 | Agent is already working |
 | `INVALID_TRANSITION` | 400 | Invalid stage transition |
@@ -129,17 +136,11 @@ DELETE /api/projects/:id
 ### List Issues
 
 ```
-GET /api/projects/:projectId/issues
+GET /api/issues?projectId=<projectId>
 ```
 
 **Query Parameters:**
-- `status` (string[]): Filter by status (backlog, todo, in_progress, done)
-- `stage` (string): Filter by stage
-- `label` (string[]): Filter by label names
-- `assignedAgent` (string): Filter by agent ID
-- `search` (string): Search title/description
-- `page` (number): Page number (default: 1)
-- `perPage` (number): Items per page (default: 50)
+- `projectId` (string, required): Project ID
 
 **Response:**
 ```json
@@ -182,16 +183,16 @@ GET /api/projects/:projectId/issues
 ### Create Issue
 
 ```
-POST /api/projects/:projectId/issues
+POST /api/issues
 ```
 
 **Request Body:**
 ```json
 {
+  "projectId": "uuid",
   "title": "Fix authentication bug",
   "description": "Users can't log in after password reset",
-  "priority": "high",
-  "labelIds": ["uuid", "uuid"]
+  "priority": "high"
 }
 ```
 
@@ -234,6 +235,8 @@ POST /api/issues/:id/start
 ```
 
 Moves issue from backlog/todo to active workflow.
+
+Branch naming: `issue/<number>-<kebab-title>`, where kebab-case lowercases, replaces non `a-z0-9` with `-`, and trims leading/trailing dashes (non-ASCII characters collapse to dashes).
 
 **Request Body:**
 ```json
@@ -763,6 +766,11 @@ GET /api/runs/:id
 ws://localhost:3002/ws?token=<auth-token>
 ```
 
+**Limits:**
+- Max payload: 64KB
+- Max connections per IP: 20
+- Max subscriptions per client: 100
+
 ### Subscribe/Unsubscribe
 
 ```json
@@ -780,7 +788,7 @@ ws://localhost:3002/ws?token=<auth-token>
 ```
 
 **Channels:**
-- `project:<slug>` - Project-wide events
+- `project:<projectId>` - Project-wide events
 - `issue:<id>` - Issue updates
 - `agent:<name>` - Agent status and output
 
@@ -810,29 +818,25 @@ Handles:
 
 ## Validation
 
-All request bodies are validated using Zod schemas:
+Requests are validated by API helpers with the following rules:
 
-```typescript
-// Example: Create Issue
-const createIssueSchema = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().optional(),
-  priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
-  labelIds: z.array(z.string().uuid()).optional(),
-});
-```
+- Strings are trimmed; required strings reject empty/whitespace-only input
+- Optional strings reject empty input when provided; use `null` to clear nullable fields
+- Numbers must be finite (`Number.isFinite`), with integer/range checks where defined
+- Request body size limit: 1MB (`express.json({ limit: '1mb' })`)
+- PATCH semantics: only fields present in the JSON body are updated
+- Label IDs are deduplicated and must belong to the same project
+- Document `filePath` must be relative and must not include `..` segments or backslashes
+- Project `config` must be a plain JSON object (no functions/Date/etc); forbidden keys are rejected
 
-Validation errors return:
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid request body",
-    "details": {
-      "issues": [
-        { "path": ["title"], "message": "Required" }
-      ]
-    }
-  }
-}
-```
+Common max lengths:
+
+- Project name: 200
+- Project slug: 100
+- Project description: 2000
+- Issue title: 200
+- Issue description: 5000
+- Label name: 100
+- Comment content: 5000
+- Document title: 200
+- Document filePath: 500

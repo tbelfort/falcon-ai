@@ -71,18 +71,32 @@ export function createProjectService(
       throw notFoundError('Project not found', { id });
     }
 
-    if (input.slug) {
+    if (input.slug !== undefined) {
       const slugMatch = repo.getBySlug(input.slug);
       if (slugMatch && slugMatch.id !== id) {
         throw conflictError('Project slug already exists', { slug: input.slug });
       }
     }
 
-    const updated: Project = {
-      ...existing,
-      ...input,
-      updatedAt: now(),
-    };
+    const updated: Project = { ...existing, updatedAt: now() };
+    if (input.name !== undefined) {
+      updated.name = input.name;
+    }
+    if (input.slug !== undefined) {
+      updated.slug = input.slug;
+    }
+    if (input.description !== undefined) {
+      updated.description = input.description;
+    }
+    if (input.repoUrl !== undefined) {
+      updated.repoUrl = input.repoUrl;
+    }
+    if (input.defaultBranch !== undefined) {
+      updated.defaultBranch = input.defaultBranch;
+    }
+    if (input.config !== undefined) {
+      updated.config = input.config;
+    }
 
     return repo.update(updated);
   };

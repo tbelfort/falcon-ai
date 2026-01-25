@@ -1,6 +1,7 @@
 export type ServiceErrorCode =
   | 'NOT_FOUND'
   | 'VALIDATION_ERROR'
+  | 'UNAUTHORIZED'
   | 'CONFLICT'
   | 'AGENT_BUSY'
   | 'INVALID_TRANSITION'
@@ -31,6 +32,13 @@ export function validationError(
   details?: unknown
 ): ServiceError {
   return new ServiceError('VALIDATION_ERROR', message, details);
+}
+
+export function unauthorizedError(
+  message: string,
+  details?: unknown
+): ServiceError {
+  return new ServiceError('UNAUTHORIZED', message, details);
 }
 
 export function conflictError(message: string, details?: unknown): ServiceError {

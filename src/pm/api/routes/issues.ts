@@ -8,6 +8,8 @@ import {
   optionalStringArray,
   requireEnum,
   requireString,
+  ARRAY_LIMITS,
+  STRING_LIMITS,
 } from '../validation.js';
 import { validationError } from '../../core/services/errors.js';
 import type { UpdateIssueInput } from '../../core/services/issues.js';
@@ -46,7 +48,9 @@ export function createIssuesRouter(context: ApiContext): Router {
       if (!projectIdParam || Array.isArray(projectIdParam)) {
         throw validationError('projectId is required', { field: 'projectId' });
       }
-      const projectId = requireString(projectIdParam, 'projectId');
+      const projectId = requireString(projectIdParam, 'projectId', {
+        maxLength: STRING_LIMITS.id,
+      });
       const issues = context.services.issues.listIssues(projectId);
       res.json({ data: issues });
     })
@@ -56,9 +60,15 @@ export function createIssuesRouter(context: ApiContext): Router {
     '/',
     asyncHandler((req, res) => {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const projectId = requireString(body.projectId, 'projectId');
-      const title = requireString(body.title, 'title');
-      const description = optionalString(body.description, 'description');
+      const projectId = requireString(body.projectId, 'projectId', {
+        maxLength: STRING_LIMITS.id,
+      });
+      const title = requireString(body.title, 'title', {
+        maxLength: STRING_LIMITS.issueTitle,
+      });
+      const description = optionalString(body.description, 'description', {
+        maxLength: STRING_LIMITS.issueDescription,
+      });
       const priority = optionalEnum(body.priority, 'priority', ISSUE_PRIORITIES);
 
       const issue = context.services.issues.createIssue({
@@ -99,11 +109,15 @@ export function createIssuesRouter(context: ApiContext): Router {
       const update: UpdateIssueInput = {};
 
       if (Object.prototype.hasOwnProperty.call(body, 'title')) {
-        update.title = requireString(body.title, 'title');
+        update.title = requireString(body.title, 'title', {
+          maxLength: STRING_LIMITS.issueTitle,
+        });
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'description')) {
-        const description = optionalString(body.description, 'description');
+        const description = optionalString(body.description, 'description', {
+          maxLength: STRING_LIMITS.issueDescription,
+        });
         if (description !== undefined) {
           update.description = description;
         }
@@ -114,7 +128,10 @@ export function createIssuesRouter(context: ApiContext): Router {
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'labelIds')) {
-        const labelIds = optionalStringArray(body.labelIds, 'labelIds');
+        const labelIds = optionalStringArray(body.labelIds, 'labelIds', {
+          maxLength: STRING_LIMITS.id,
+          maxItems: ARRAY_LIMITS.labelIds,
+        });
         if (labelIds !== undefined) {
           update.labelIds = labelIds;
         }
@@ -159,7 +176,9 @@ export function createIssuesRouter(context: ApiContext): Router {
     asyncHandler((req, res) => {
       const issueId = req.params.id as string;
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const presetId = requireString(body.presetId, 'presetId');
+      const presetId = requireString(body.presetId, 'presetId', {
+        maxLength: STRING_LIMITS.id,
+      });
 
       const result = context.services.issues.startIssue(issueId, presetId);
       const event = {
