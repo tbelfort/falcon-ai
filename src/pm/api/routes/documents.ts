@@ -5,7 +5,7 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
-import { isSafeRelativePath, LIMITS } from '../validation.js';
+import { isSafeRelativePath, LIMITS, parsePagination } from '../validation.js';
 
 const createDocumentSchema = z.object({
   title: z.string().min(1).max(LIMITS.title),
@@ -23,13 +23,24 @@ export function createDocumentsRouter(
   const router = Router({ mergeParams: true });
 
   router.get('/', (req, res) => {
+    const pagination = parsePagination(req.query.page, req.query.perPage);
+    if (!pagination) {
+      return sendError(
+        res,
+        createError('VALIDATION_ERROR', 'Invalid pagination parameters')
+      );
+    }
+
     const params = req.params as Record<string, string>;
     const result = services.documents.listByIssue(params.id);
     if (!result.ok) {
       return sendError(res, result.error);
     }
 
-    return sendSuccess(res, result.value);
+    const { page, perPage } = pagination;
+    const start = (page - 1) * perPage;
+    const items = result.value.slice(start, start + perPage);
+    return sendSuccess(res, items, { total: result.value.length, page, perPage });
   });
 
   router.post('/', (req, res) => {

@@ -45,6 +45,10 @@ All responses follow this structure:
 }
 ```
 
+## Pagination
+
+List endpoints accept `page` and `perPage` query parameters. Defaults are `page=1` and `perPage=50` with a maximum of `perPage=100`. Responses include `meta.total`, `meta.page`, and `meta.perPage`.
+
 ## Timestamps
 
 All timestamp fields (`createdAt`, `updatedAt`, `startedAt`, `completedAt`, WS `at`) are Unix seconds (UTC).

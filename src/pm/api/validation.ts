@@ -16,6 +16,12 @@ export const LIMITS = {
   labelIds: 50,
 } as const;
 
+export const PAGINATION = {
+  defaultPage: 1,
+  defaultPerPage: 50,
+  maxPerPage: 100,
+} as const;
+
 export function requireString(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -36,4 +42,56 @@ export function isSafeRelativePath(value: string): boolean {
 
   const segments = value.split(/[\\/]+/).filter(Boolean);
   return !segments.includes('..');
+}
+
+export function parsePagination(
+  pageValue: unknown,
+  perPageValue: unknown
+): { page: number; perPage: number } | null {
+  const page = parsePositiveInt(pageValue);
+  const perPage = parsePositiveInt(perPageValue);
+
+  if (pageValue !== undefined && page === null) {
+    return null;
+  }
+
+  if (perPageValue !== undefined && perPage === null) {
+    return null;
+  }
+
+  const resolvedPage = page ?? PAGINATION.defaultPage;
+  const resolvedPerPage = Math.min(
+    perPage ?? PAGINATION.defaultPerPage,
+    PAGINATION.maxPerPage
+  );
+
+  return {
+    page: resolvedPage,
+    perPage: resolvedPerPage,
+  };
+}
+
+function parsePositiveInt(value: unknown): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return value > 0 ? value : null;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  if (value.trim().length === 0) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    return null;
+  }
+
+  return parsed > 0 ? parsed : null;
 }

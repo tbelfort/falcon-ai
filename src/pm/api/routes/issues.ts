@@ -5,7 +5,7 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
-import { LIMITS, requireString } from '../validation.js';
+import { LIMITS, parsePagination, requireString } from '../validation.js';
 
 const issuePrioritySchema = z.enum(['low', 'medium', 'high', 'critical']);
 const issueStageSchema = z.enum([
@@ -54,6 +54,14 @@ export function createIssuesRouter(
   const router = Router();
 
   router.get('/', (req, res) => {
+    const pagination = parsePagination(req.query.page, req.query.perPage);
+    if (!pagination) {
+      return sendError(
+        res,
+        createError('VALIDATION_ERROR', 'Invalid pagination parameters')
+      );
+    }
+
     const projectId = requireString(req.query.projectId);
     if (!projectId || projectId.length > LIMITS.id) {
       return sendError(
@@ -67,7 +75,10 @@ export function createIssuesRouter(
       return sendError(res, result.error);
     }
 
-    return sendSuccess(res, result.value);
+    const { page, perPage } = pagination;
+    const start = (page - 1) * perPage;
+    const items = result.value.slice(start, start + perPage);
+    return sendSuccess(res, items, { total: result.value.length, page, perPage });
   });
 
   router.post('/', (req, res) => {
