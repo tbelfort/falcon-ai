@@ -148,17 +148,17 @@ async function validateGitHubToken(token: string): Promise<boolean> {
 
 ## Subscription Credential Storage
 
-Claude Code and Codex use subscription-based auth, not API keys:
+Claude Code and OpenAI use local credentials; Falcon stores only references and never writes secrets into the database.
 
 ```typescript
-// No API keys stored - subscriptions are managed via:
+// No API keys stored in Falcon - credentials are managed via:
 // 1. Claude Code: ~/.claude/auth.json (managed by Claude Code)
-// 2. Codex: ~/.codex/credentials (managed by Codex CLI)
+// 2. OpenAI: local credentials (managed by OpenAI CLI or env)
 
 // Falcon just tracks which subscriptions are configured
 interface SubscriptionConfig {
   id: string;
-  type: 'claude' | 'codex';
+  type: 'claude' | 'openai';
   name: string;  // Display name
   // No secrets stored here
 }
@@ -167,7 +167,7 @@ interface SubscriptionConfig {
 ### Validation
 
 ```typescript
-async function validateSubscription(type: 'claude' | 'codex'): Promise<boolean> {
+async function validateSubscription(type: 'claude' | 'openai'): Promise<boolean> {
   if (type === 'claude') {
     // Check if Claude Code is authenticated
     try {
@@ -178,13 +178,8 @@ async function validateSubscription(type: 'claude' | 'codex'): Promise<boolean> 
     }
   }
 
-  if (type === 'codex') {
-    try {
-      const result = await exec('codex --version');
-      return result.exitCode === 0;
-    } catch {
-      return false;
-    }
+  if (type === 'openai') {
+    return Boolean(process.env.OPENAI_API_KEY);
   }
 
   return false;
@@ -205,6 +200,10 @@ async function validateSubscription(type: 'claude' | 'codex'): Promise<boolean> 
         ├── config.yaml  # 600
         └── agents/      # 700
 ```
+
+Rationale: 0o700 on directories prevents other local users from listing agent worktrees, and 0o600 on files keeps tokens, configs, and DB metadata private to the current user.
+
+FALCON_HOME is rejected if it resolves into OS-managed directories (for example `/etc`, `/usr`, `/System`) to avoid accidental writes when environment variables are mis-set. Windows comparisons are case-insensitive and UNC paths are rejected to keep data on local disks.
 
 ```typescript
 async function ensureSecurePermissions() {
@@ -232,6 +231,7 @@ async function ensureSecurePermissions() {
 // 1. File permissions (600)
 // 2. No remote access (localhost only)
 // 3. No sensitive credentials stored in DB
+// 4. Database file created atomically with fs.openSync(..., 'wx') to avoid TOCTOU
 
 // What IS stored:
 // - Issue data

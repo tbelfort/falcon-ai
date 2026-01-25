@@ -159,10 +159,8 @@ async function assignAgentToIssue(issueId: string): Promise<Agent | null> {
 
 ```typescript
 const modelFallbacks: Record<string, string[]> = {
-  'claude-opus-4.5': ['claude-sonnet-4'],  // Opus can fall back to Sonnet
-  'claude-sonnet-4': [],  // Sonnet has no fallback
-  'claude-haiku-3.5': [],
-  'codex-5.2': ['codex-5.0'],
+  'gpt-4o': ['gpt-4o-mini'],
+  'gpt-4o-mini': [],
 };
 
 async function findIdleAgentWithFallback(
@@ -322,49 +320,59 @@ interface PresetConfig {
 const builtInPresets: Record<string, PresetConfig> = {
   'full-pipeline': {
     stages: [
-      'CONTEXT_PACK', 'CONTEXT_REVIEW', 'SPEC', 'SPEC_REVIEW',
-      'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER',
-      'TESTING', 'DOC_REVIEW', 'MERGE_READY'
+      'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+      'SPEC', 'SPEC_REVIEW', 'IMPLEMENT', 'PR_REVIEW',
+      'PR_HUMAN_REVIEW', 'FIXER', 'TESTING', 'DOC_REVIEW',
+      'MERGE_READY', 'DONE'
     ],
     models: {
-      default: 'claude-sonnet-4',
+      default: 'gpt-4o',
       overrides: {
-        CONTEXT_PACK: 'claude-opus-4.5',
-        SPEC: 'claude-opus-4.5',
+        CONTEXT_PACK: 'gpt-4o-mini',
+        SPEC: 'gpt-4o',
+        IMPLEMENT: 'gpt-4o',
+        PR_REVIEW: 'gpt-4o',
       }
     },
     prReview: {
-      orchestrator: 'claude-opus-4.5',
-      scouts: ['claude-sonnet-4', 'codex-5.2'],
-      judge: 'claude-opus-4.5',
+      orchestrator: 'gpt-4o',
+      scouts: ['gpt-4o-mini'],
+      judge: 'gpt-4o',
     }
   },
 
   'quick-fix': {
     stages: [
-      'CONTEXT_PACK', 'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER'
+      'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+      'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'TESTING',
+      'DOC_REVIEW', 'MERGE_READY', 'DONE'
     ],
-    models: { default: 'claude-sonnet-4' },
+    models: { default: 'gpt-4o-mini' },
   },
 
   'docs-only': {
-    stages: ['CONTEXT_PACK', 'IMPLEMENT', 'DOC_REVIEW', 'MERGE_READY'],
-    models: { default: 'claude-haiku-3.5' },
+    stages: [
+      'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+      'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'TESTING',
+      'DOC_REVIEW', 'MERGE_READY', 'DONE'
+    ],
+    models: { default: 'gpt-4o-mini' },
   },
 
   'security-critical': {
     stages: [
-      'CONTEXT_PACK', 'CONTEXT_REVIEW', 'SPEC', 'SPEC_REVIEW',
-      'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER',
-      'TESTING', 'DOC_REVIEW', 'MERGE_READY'
+      'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+      'SPEC', 'SPEC_REVIEW', 'IMPLEMENT', 'PR_REVIEW',
+      'PR_HUMAN_REVIEW', 'FIXER', 'TESTING', 'DOC_REVIEW',
+      'MERGE_READY', 'DONE'
     ],
     models: {
-      default: 'claude-opus-4.5',
+      default: 'gpt-4o',
     },
     prReview: {
-      orchestrator: 'claude-opus-4.5',
-      scouts: ['claude-opus-4.5', 'claude-sonnet-4', 'codex-5.2'],
-      judge: 'claude-opus-4.5',
+      orchestrator: 'gpt-4o',
+      scouts: ['gpt-4o-mini'],
+      judge: 'gpt-4o',
     }
   },
 };

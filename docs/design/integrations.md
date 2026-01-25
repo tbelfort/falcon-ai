@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document covers external integrations for falcon-pm: GitHub for PR management, Claude Code and Codex for agent invocation, and WebSocket for real-time streaming.
+This document covers external integrations for falcon-pm: GitHub for PR management, Claude Code and OpenAI for agent invocation, and WebSocket for real-time streaming.
 
 ## GitHub Integration
 
@@ -395,41 +395,49 @@ export async function invokeClaudeViaCLI(
 }
 ```
 
-## Codex CLI Invocation
+## OpenAI Invocation
 
 ```typescript
-import { Codex } from '@openai/codex-sdk';
+import OpenAI from 'openai';
 
-export async function invokeCodexAgent(
+export async function invokeOpenAIAgent(
   workDir: string,
-  prompt: string,
-  onOutput?: (chunk: string) => void
-): Promise<{ result: string; threadId: string }> {
-  const codex = new Codex();
-  const thread = codex.startThread();
+  prompt: string
+): Promise<{ result: string; responseId: string }> {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   process.chdir(workDir);  // Set working directory
 
-  const result = await thread.run(prompt);
+  const response = await client.responses.create({
+    model: 'gpt-4o-mini',
+    input: prompt,
+  });
 
   return {
-    result: result.toString(),
-    threadId: thread.id,
+    result: response.output_text ?? '',
+    responseId: response.id,
   };
 }
 
 // Or via CLI
-export async function invokeCodexViaCLI(
+export async function invokeOpenAIViaCLI(
   workDir: string,
   prompt: string
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('codex', ['exec', '--json', prompt], {
+    const child = spawn('openai', [
+      'responses',
+      'create',
+      '--model',
+      'gpt-4o-mini',
+      '--input',
+      prompt,
+    ], {
       cwd: workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        CODEX_API_KEY: process.env.CODEX_API_KEY,
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       },
     });
 
@@ -440,8 +448,8 @@ export async function invokeCodexViaCLI(
       rl.on('line', (line) => {
         try {
           const event = JSON.parse(line);
-          if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
-            result = event.item.text ?? '';
+          if (event.output_text) {
+            result += event.output_text;
           }
         } catch {}
       });
@@ -449,7 +457,7 @@ export async function invokeCodexViaCLI(
 
     child.on('close', (code) => {
       if (code === 0) resolve(result);
-      else reject(new Error(`Codex exited with code ${code}`));
+      else reject(new Error(`OpenAI CLI exited with code ${code}`));
     });
   });
 }
@@ -559,7 +567,7 @@ interface LLMProvider {
 // Registry for future providers
 const providers: Record<string, LLMProvider> = {
   'claude': claudeProvider,
-  'codex': codexProvider,
+  'openai': openaiProvider,
   // Future:
   // 'gemini': geminiProvider,
   // 'grok': grokProvider,

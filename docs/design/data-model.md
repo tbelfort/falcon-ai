@@ -174,7 +174,10 @@ CREATE INDEX labels_project_idx ON labels(project_id);
 ```
 
 **Built-in Labels (seeded):**
-- bugs, data, docs, foundation, feature, migration, performance, refactor, security, test, ux
+- bug, data, docs, foundation, feature, migration, performance, refactor, security, test, ux
+
+Seeding is project-scoped: built-in labels are inserted only for existing projects.
+Seed operations are idempotent via insert + on-conflict-do-nothing (no UPSERT).
 
 ### issue_labels
 
@@ -195,15 +198,15 @@ CREATE INDEX issue_labels_label_idx ON issue_labels(label_id);
 
 ### agents
 
-Registered AI agents (Claude Code, Codex).
+Registered AI agents (Claude Code, OpenAI).
 
 ```sql
 CREATE TABLE agents (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id),
   name TEXT NOT NULL, -- Display name
-  agent_type TEXT NOT NULL, -- 'claude' | 'codex'
-  model TEXT NOT NULL, -- e.g., 'claude-opus-4.5', 'codex-5.2'
+  agent_type TEXT NOT NULL, -- 'claude' | 'openai'
+  model TEXT NOT NULL, -- e.g., 'claude-opus-4.5', 'gpt-4o'
 
   -- Status
   status TEXT NOT NULL DEFAULT 'idle', -- idle, checkout, working, error
@@ -230,7 +233,7 @@ CREATE INDEX agents_status_idx ON agents(status);
 
 **TypeScript:**
 ```typescript
-type AgentType = 'claude' | 'codex';
+type AgentType = 'claude' | 'openai';
 type AgentStatus = 'idle' | 'checkout' | 'working' | 'error';
 
 interface AgentConfig {
@@ -347,7 +350,7 @@ CREATE TABLE workflow_runs (
   tokens_output INTEGER,
 
   -- Session reference
-  session_id TEXT, -- Claude/Codex session ID for resume
+  session_id TEXT, -- Claude/OpenAI session ID for resume
 
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -405,22 +408,22 @@ const fullPipeline: PresetConfig = {
     'TESTING', 'DOC_REVIEW', 'MERGE_READY'
   ],
   models: {
-    default: 'claude-sonnet-4',
+    default: 'gpt-4o',
     overrides: {
-      CONTEXT_PACK: 'claude-opus-4.5',
-      SPEC: 'claude-opus-4.5',
+      CONTEXT_PACK: 'gpt-4o-mini',
+      SPEC: 'gpt-4o',
     }
   },
   prReview: {
-    orchestrator: 'claude-opus-4.5',
-    scouts: ['claude-sonnet-4', 'codex-5.2'],
-    judge: 'claude-opus-4.5',
+    orchestrator: 'gpt-4o',
+    scouts: ['gpt-4o-mini'],
+    judge: 'gpt-4o',
   }
 };
 
 const quickFix: PresetConfig = {
   stages: ['CONTEXT_PACK', 'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER'],
-  models: { default: 'claude-sonnet-4' },
+  models: { default: 'gpt-4o-mini' },
 };
 ```
 
@@ -487,16 +490,36 @@ const defaultLabels = [
 
 ### Default Presets
 
+Model identifiers are stored as opaque strings and are not validated at runtime.
+Examples below use current provider names and should be updated per deployment.
+Quick-fix and docs-only presets skip spec stages but retain review/testing to stay compatible with the shared stage machine.
+
 ```typescript
 const defaultPresets = [
   {
     name: 'full-pipeline',
     description: 'Complete workflow with all stages',
     config: {
-      stages: ['CONTEXT_PACK', 'CONTEXT_REVIEW', 'SPEC', 'SPEC_REVIEW',
-               'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER',
-               'TESTING', 'DOC_REVIEW', 'MERGE_READY'],
-      models: { default: 'claude-sonnet-4' },
+      stages: [
+        'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+        'SPEC', 'SPEC_REVIEW', 'IMPLEMENT', 'PR_REVIEW',
+        'PR_HUMAN_REVIEW', 'FIXER', 'TESTING', 'DOC_REVIEW',
+        'MERGE_READY', 'DONE'
+      ],
+      models: {
+        default: 'gpt-4o',
+        overrides: {
+          CONTEXT_PACK: 'gpt-4o-mini',
+          SPEC: 'gpt-4o',
+          IMPLEMENT: 'gpt-4o',
+          PR_REVIEW: 'gpt-4o',
+        },
+      },
+      prReview: {
+        orchestrator: 'gpt-4o',
+        scouts: ['gpt-4o-mini'],
+        judge: 'gpt-4o',
+      },
     },
     isDefault: true,
   },
@@ -504,16 +527,24 @@ const defaultPresets = [
     name: 'quick-fix',
     description: 'Skip spec for minor bug fixes',
     config: {
-      stages: ['CONTEXT_PACK', 'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER'],
-      models: { default: 'claude-sonnet-4' },
+      stages: [
+        'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+        'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'TESTING',
+        'DOC_REVIEW', 'MERGE_READY', 'DONE'
+      ],
+      models: { default: 'gpt-4o-mini' },
     },
   },
   {
     name: 'docs-only',
-    description: 'Documentation changes only',
+    description: 'Documentation-only workflow',
     config: {
-      stages: ['CONTEXT_PACK', 'IMPLEMENT', 'DOC_REVIEW', 'MERGE_READY'],
-      models: { default: 'claude-haiku-3.5' },
+      stages: [
+        'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW',
+        'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'TESTING',
+        'DOC_REVIEW', 'MERGE_READY', 'DONE'
+      ],
+      models: { default: 'gpt-4o-mini' },
     },
     forLabel: 'docs',
   },
