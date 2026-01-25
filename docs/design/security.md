@@ -158,7 +158,7 @@ Claude Code and Codex use local credentials; Falcon stores only references and n
 // Falcon just tracks which subscriptions are configured
 interface SubscriptionConfig {
   id: string;
-  type: 'claude' | 'codex';
+  type: 'claude' | 'openai';
   name: string;  // Display name
   // No secrets stored here
 }
@@ -167,7 +167,7 @@ interface SubscriptionConfig {
 ### Validation
 
 ```typescript
-async function validateSubscription(type: 'claude' | 'codex'): Promise<boolean> {
+async function validateSubscription(type: 'claude' | 'openai'): Promise<boolean> {
   if (type === 'claude') {
     // Check if Claude Code is authenticated
     try {

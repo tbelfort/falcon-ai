@@ -414,7 +414,14 @@ export async function invokeCodexAgent(
   onOutput?: (text: string) => void
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('codex', ['exec', '--json', prompt], {
+    const child = spawn('openai', [
+      'responses',
+      'create',
+      '--model',
+      'gpt-4o-mini',
+      '--input',
+      prompt,
+    ], {
       cwd: workDir,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -554,7 +561,7 @@ interface LLMProvider {
 // Registry for future providers
 const providers: Record<string, LLMProvider> = {
   'claude': claudeProvider,
-  'codex': codexProvider,
+  'openai': openaiProvider,
   // Future:
   // 'gemini': geminiProvider,
   // 'grok': grokProvider,

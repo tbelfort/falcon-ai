@@ -198,7 +198,7 @@ CREATE INDEX issue_labels_label_idx ON issue_labels(label_id);
 
 ### agents
 
-Registered AI agents (Claude Code, Codex).
+Registered AI agents (Claude Code, OpenAI).
 
 ```sql
 CREATE TABLE agents (
@@ -233,7 +233,7 @@ CREATE INDEX agents_status_idx ON agents(status);
 
 **TypeScript:**
 ```typescript
-type AgentType = 'claude' | 'codex';
+type AgentType = 'claude' | 'openai';
 type AgentStatus = 'idle' | 'checkout' | 'working' | 'error';
 
 interface AgentConfig {
