@@ -21,7 +21,7 @@ export function createServices(
   repos: Repositories,
   options: ServicesOptions = {}
 ): Services {
-  const now = options.now ?? (() => Date.now());
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
 
   return {
     projects: new ProjectsService(repos.projects, now),

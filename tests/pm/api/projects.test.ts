@@ -11,7 +11,7 @@ describe('pm api projects', () => {
 
   beforeEach(() => {
     const repos = createInMemoryRepos();
-    const services = createServices(repos, { now: () => 1_700_000_000_000 });
+    const services = createServices(repos, { now: () => 1_700_000_000 });
     const broadcast: BroadcastFn = () => undefined;
     app = createApiApp({ services, broadcast });
   });

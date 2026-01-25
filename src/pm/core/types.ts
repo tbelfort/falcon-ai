@@ -14,6 +14,11 @@ export type IssueStage =
   | 'MERGE_READY'
   | 'DONE';
 
+export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'done';
+export type IssuePriority = 'low' | 'medium' | 'high' | 'critical';
+export type CommentAuthorType = 'agent' | 'human';
+export type DocumentType = 'context_pack' | 'spec' | 'ai_doc' | 'other';
+
 export type AgentType = 'claude' | 'openai';
 export type AgentStatus = 'idle' | 'checkout' | 'working' | 'error';
 
@@ -35,9 +40,9 @@ export interface Issue {
   number: number;
   title: string;
   description: string | null;
-  status: string;
+  status: IssueStatus;
   stage: IssueStage;
-  priority: string | null;
+  priority: IssuePriority | null;
   presetId: string | null;
   branchName: string | null;
   prNumber: number | null;
@@ -83,7 +88,7 @@ export interface Document {
   projectId: string;
   issueId: string | null;
   title: string;
-  docType: string;
+  docType: DocumentType;
   filePath: string;
   contentHash: string | null;
   version: number;
@@ -96,7 +101,7 @@ export interface Comment {
   id: string;
   issueId: string;
   content: string;
-  authorType: string;
+  authorType: CommentAuthorType;
   authorName: string;
   parentId: string | null;
   createdAt: number;

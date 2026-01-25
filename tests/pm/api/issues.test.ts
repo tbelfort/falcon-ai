@@ -11,7 +11,7 @@ describe('pm api issues', () => {
 
   beforeEach(() => {
     const repos = createInMemoryRepos();
-    const services = createServices(repos, { now: () => 1_700_000_000_000 });
+    const services = createServices(repos, { now: () => 1_700_000_000 });
     const broadcast: BroadcastFn = () => undefined;
     app = createApiApp({ services, broadcast });
   });
@@ -50,5 +50,57 @@ describe('pm api issues', () => {
     const listResponse = await request(app).get('/api/issues').query({ projectId });
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data).toHaveLength(1);
+  });
+
+  it('starts an issue and returns nextStage', async () => {
+    const projectResponse = await request(app).post('/api/projects').send({
+      name: 'Workflow',
+      slug: 'workflow',
+      description: null,
+      repoUrl: null,
+      defaultBranch: 'main',
+    });
+    const projectId = projectResponse.body.data.id;
+
+    const issueResponse = await request(app).post('/api/issues').send({
+      projectId,
+      title: 'Start auth fix',
+      description: null,
+      priority: 'high',
+    });
+
+    const startResponse = await request(app)
+      .post(`/api/issues/${issueResponse.body.data.id}/start`)
+      .send({ presetId: 'preset-1' });
+
+    expect(startResponse.status).toBe(200);
+    expect(startResponse.body.data.nextStage).toBe('CONTEXT_PACK');
+    expect(startResponse.body.data.issue.status).toBe('in_progress');
+    expect(startResponse.body.data.issue.stage).toBe('CONTEXT_PACK');
+  });
+
+  it('rejects unknown labelIds when updating an issue', async () => {
+    const projectResponse = await request(app).post('/api/projects').send({
+      name: 'Labels',
+      slug: 'labels',
+      description: null,
+      repoUrl: null,
+      defaultBranch: 'main',
+    });
+    const projectId = projectResponse.body.data.id;
+
+    const issueResponse = await request(app).post('/api/issues').send({
+      projectId,
+      title: 'Label test',
+      description: null,
+      priority: 'low',
+    });
+
+    const updateResponse = await request(app)
+      .patch(`/api/issues/${issueResponse.body.data.id}`)
+      .send({ labelIds: ['missing-label'] });
+
+    expect(updateResponse.status).toBe(400);
+    expect(updateResponse.body.error.code).toBe('VALIDATION_ERROR');
   });
 });

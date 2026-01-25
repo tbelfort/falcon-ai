@@ -8,7 +8,7 @@ export function buildEventPayload<T>(
 ): WsEventPayload<T> {
   return {
     type: event,
-    at: Date.now(),
+    at: Math.floor(Date.now() / 1000),
     projectId,
     issueId,
     payload,

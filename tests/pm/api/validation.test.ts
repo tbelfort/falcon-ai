@@ -11,7 +11,7 @@ describe('pm api validation', () => {
 
   beforeEach(() => {
     const repos = createInMemoryRepos();
-    const services = createServices(repos);
+    const services = createServices(repos, { now: () => 1_700_000_000 });
     const broadcast: BroadcastFn = () => undefined;
     app = createApiApp({ services, broadcast });
   });

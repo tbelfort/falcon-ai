@@ -14,7 +14,7 @@ import { createInMemoryRepos } from '../../../src/pm/core/testing/in-memory-repo
 describe('pm ws events', () => {
   it('broadcasts issue creation events', async () => {
     const repos = createInMemoryRepos();
-    const services = createServices(repos, { now: () => 1_700_000_000_000 });
+    const services = createServices(repos, { now: () => 1_700_000_000 });
     const app = createApiApp({ services, broadcast });
     const server = http.createServer(app);
     setupWebSocket(server);
