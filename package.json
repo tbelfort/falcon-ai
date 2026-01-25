@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Pattern-based guardrail system for multi-agent development",
   "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "main": "./dist/workflow/index.js",
   "types": "./dist/workflow/index.d.ts",
   "exports": {
@@ -63,6 +66,9 @@
     "pm:api:dev": "npm run build && node dist/pm/api/main.js",
     "pm:db:migrate": "npm run build && node dist/pm/db/cli.js migrate",
     "pm:db:seed": "npm run build && node dist/pm/db/cli.js seed",
+    "pm:ui:dev": "npm --workspace pm-dashboard run dev",
+    "pm:ui:test": "npm --workspace pm-dashboard run test",
+    "pm:ui:build": "npm --workspace pm-dashboard run build",
     "postinstall": "test -f ./dist/cli/postinstall.js && node ./dist/cli/postinstall.js || true",
     "test": "vitest",
     "test:run": "vitest run",

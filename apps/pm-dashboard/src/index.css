@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --pm-bg: #f6f2ea;
+  --pm-bg-deep: #efe7db;
+  --pm-ink: #1f2937;
+  --pm-ink-muted: #5b6472;
+  --pm-accent: #e4793b;
+  --pm-accent-deep: #b65321;
+  --pm-surface: #ffffff;
+  --pm-border: #e3d7c7;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #ffe9d4 0%, transparent 60%),
+    radial-gradient(900px 600px at 90% 10%, #e8f0ff 0%, transparent 55%),
+    linear-gradient(180deg, var(--pm-bg) 0%, var(--pm-bg-deep) 100%);
+  color: var(--pm-ink);
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+}
+
+.pm-card {
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  box-shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
+}
+
+.pm-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(31, 41, 55, 0.2) transparent;
+}
+
+.pm-scrollbar::-webkit-scrollbar {
+  height: 8px;
+}
+
+.pm-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(31, 41, 55, 0.2);
+  border-radius: 999px;
+}
