@@ -14,9 +14,33 @@ const repoMigrationsFolder = path.resolve(
   process.cwd(),
   'src/pm/db/migrations'
 );
-const migrationsFolder = fs.existsSync(repoMigrationsFolder)
-  ? repoMigrationsFolder
-  : fallbackMigrationsFolder;
+
+function isValidMigrationsFolder(folder: string): boolean {
+  try {
+    const stat = fs.statSync(folder);
+    if (!stat.isDirectory()) {
+      return false;
+    }
+    const journal = path.join(folder, 'meta', '_journal.json');
+    return fs.existsSync(journal);
+  } catch {
+    return false;
+  }
+}
+
+function resolveMigrationsFolder(): string {
+  if (isValidMigrationsFolder(repoMigrationsFolder)) {
+    return repoMigrationsFolder;
+  }
+  if (isValidMigrationsFolder(fallbackMigrationsFolder)) {
+    return fallbackMigrationsFolder;
+  }
+  throw new Error(
+    `Migrations folder not found. Checked ${repoMigrationsFolder} and ${fallbackMigrationsFolder}.`
+  );
+}
+
+const migrationsFolder = resolveMigrationsFolder();
 
 export function migratePmDb(
   db: BetterSQLite3Database<typeof schema> = getPmDb()

@@ -38,7 +38,7 @@ The main overview showing project health and activity.
 │  ┌───────────────────────────────────────────────────────────┐ │
 │  │ [opus-1]  Working on #42: Fix auth bug       IMPLEMENT    │ │
 │  │ [sonnet-1] Working on #38: Add logging      SPEC_REVIEW   │ │
-│  │ [codex-1] Idle                                            │ │
+│  │ [openai-1] Idle                                           │ │
 │  └───────────────────────────────────────────────────────────┘ │
 │                                                                  │
 │  Recent Activity                                                 │
@@ -157,7 +157,7 @@ Real-time monitoring of agent activity with debug output.
 │  └───────────────────────────────────────────────────────────┘ │
 │                                                                  │
 │  ┌───────────────────────────────────────────────────────────┐ │
-│  │ codex-1 (codex-5.2)                                        │ │
+│  │ openai-1 (gpt-4o)                                          │ │
 │  │ Status: Idle | Last active: 1 hour ago                    │ │
 │  └───────────────────────────────────────────────────────────┘ │
 │                                                                  │
@@ -174,7 +174,7 @@ Human review interface for PR findings.
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  Summary: 5 findings (3 errors, 2 warnings)                     │
-│  Scouts: claude-sonnet-4, codex-5.2 | Judge: claude-opus-4.5   │
+│  Scouts: gpt-4o-mini | Judge: gpt-4o                          │
 │                                                                  │
 │  Filter: [All ▼] [Show dismissed: ☐]                            │
 │                                                                  │
@@ -230,7 +230,7 @@ Configuration for project, agents, and presets.
 │  │  ├───────────┼────────┼─────────────────┼────────┼───────┤││
 │  │  │ opus-1    │ claude │ claude-opus-4.5 │ idle   │ [Edit]│││
 │  │  │ sonnet-1  │ claude │ claude-sonnet-4 │ idle   │ [Edit]│││
-│  │  │ codex-1   │ codex  │ codex-5.2       │ idle   │ [Edit]│││
+│  │  │ openai-1  │ openai │ gpt-4o          │ idle   │ [Edit]│││
 │  │  └─────────────────────────────────────────────────────┘    ││
 │  │                                                              ││
 │  │  [+ Add Agent]                                               ││

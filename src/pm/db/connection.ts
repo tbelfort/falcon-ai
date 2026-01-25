@@ -14,8 +14,23 @@ function ensureDirectory(dbPath: string): void {
     return;
   }
   const dir = path.dirname(dbPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+function createDbFileIfMissing(dbPath: string): boolean {
+  if (dbPath === ':memory:') {
+    return false;
+  }
+  try {
+    const fd = fs.openSync(dbPath, 'wx', 0o600);
+    fs.closeSync(fd);
+    return true;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EEXIST') {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -31,12 +46,17 @@ export function openPmSqlite(dbPath: string = getPmDbPath()): Database.Database 
   }
 
   ensureDirectory(dbPath);
-  const dbExists = dbPath !== ':memory:' && fs.existsSync(dbPath);
-  const sqlite = new Database(dbPath);
-  applyPragmas(sqlite);
+  createDbFileIfMissing(dbPath);
 
-  if (dbPath !== ':memory:' && !dbExists) {
-    fs.chmodSync(dbPath, 0o600);
+  let sqlite: Database.Database | null = null;
+  try {
+    sqlite = new Database(dbPath);
+    applyPragmas(sqlite);
+  } catch (error) {
+    if (sqlite) {
+      sqlite.close();
+    }
+    throw error;
   }
 
   cachedSqlite = sqlite;

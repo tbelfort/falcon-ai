@@ -25,8 +25,8 @@ Falcon-PM is an AI agent orchestration platform that replaces Linear with a cust
 │  ┌──────────────────────────────────────────────────────────┐          │
 │  │                   Agent Infrastructure                    │          │
 │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐     │          │
-│  │  │ opus-1  │  │ opus-2  │  │sonnet-1 │  │ codex-1 │     │          │
-│  │  │(claude) │  │(claude) │  │(claude) │  │ (codex) │     │          │
+│  │  │ opus-1  │  │ opus-2  │  │sonnet-1 │  │openai-1 │     │          │
+│  │  │(claude) │  │(claude) │  │(claude) │  │ (openai)│     │          │
 │  │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘     │          │
 │  │       │            │            │            │           │          │
 │  │       └────────────┴────────────┴────────────┘           │          │
@@ -49,6 +49,9 @@ Falcon-PM is an AI agent orchestration platform that replaces Linear with a cust
 
 Core project management functionality:
 - **Database Layer** (`src/pm/db/`): SQLite with Drizzle ORM
+- Connection is cached at module scope; call `closePmDb()` after tests and CLI runs.
+- Migrations load from `src/pm/db/migrations` in-repo with a fallback to `dist/pm/db/migrations`.
+- `DATABASE_URL` must be a `file:` URI (defaults to `~/.falcon/pm.db`).
 - **REST API** (`src/pm/api/`): Express server for all CRUD and orchestration
 - **Dashboard** (`src/pm/dashboard/`): React frontend with Kanban, settings, PR review
 
@@ -84,7 +87,6 @@ src/pm/
 ├── db/
 │   ├── schema.ts           # Drizzle schema definitions
 │   ├── connection.ts       # Database connection
-│   ├── relations.ts        # Relation definitions
 │   ├── seed.ts             # Default data seeding
 │   └── migrations/         # Generated migrations
 ├── api/
@@ -162,7 +164,7 @@ src/pm/
         │   ├── opus-1/      # Git clone for agent
         │   ├── opus-2/
         │   ├── sonnet-1/
-        │   └── codex-1/
+        │   └── openai-1/
         └── issues/
             └── <issue-id>/
                 ├── context/     # Context pack files
@@ -224,7 +226,7 @@ Human starts issue (selects preset)
    Agent workspace prepared (checkout branch)
          │
          ▼
-   Claude/Codex invoked non-interactively
+   Claude/OpenAI invoked non-interactively
          │
          ▼
    Agent executes stage task
@@ -353,8 +355,8 @@ subscriptions:
   claude:
     - name: claude-primary
       # Managed via oauth/session, not API keys
-  codex:
-    - name: codex-primary
+  openai:
+    - name: openai-primary
 
 defaults:
   model: claude-sonnet-4
@@ -375,9 +377,9 @@ agents:
   - id: sonnet-1
     type: claude
     model: claude-sonnet-4
-  - id: codex-1
-    type: codex
-    model: codex-5.2
+  - id: openai-1
+    type: openai
+    model: gpt-4o
 
 workflowDefaults:
   preset: full-pipeline
@@ -388,7 +390,7 @@ workflowDefaults:
 
 ## Security Considerations
 
-1. **No API Keys**: Uses subscription-based auth (Claude Code, Codex CLI sessions)
+1. **No API Keys**: Uses subscription-based auth (Claude Code, OpenAI sessions)
 2. **Token Storage**: GitHub tokens stored securely, never in database
 3. **Agent Isolation**: Each agent operates in isolated git worktree
 4. **Local Database**: SQLite file in `~/.falcon/` with proper permissions
@@ -397,6 +399,6 @@ workflowDefaults:
 ## Scalability Notes
 
 - **Single-machine design**: Optimized for developer workstations
-- **Multiple agents**: Support for N claude + M codex concurrent agents
+- **Multiple agents**: Support for N claude + M openai concurrent agents
 - **SQLite sufficient**: Expected issue volumes < 10,000 per project
 - **WebSocket**: Direct connections, no Redis needed for single server

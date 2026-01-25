@@ -7,7 +7,7 @@ import { labels, modelPresets, projects } from './schema.js';
 import type * as schema from './schema.js';
 
 const BUILTIN_LABELS = [
-  'bugs',
+  'bug',
   'data',
   'docs',
   'foundation',
@@ -68,32 +68,32 @@ const DOCS_ONLY_STAGES: IssueStage[] = [
 const FULL_PIPELINE_CONFIG: PresetConfig = {
   stages: FULL_PIPELINE_STAGES,
   models: {
-    default: 'gpt-4.1',
+    default: 'gpt-4o',
     overrides: {
-      CONTEXT_PACK: 'gpt-4.1-mini',
-      SPEC: 'gpt-4.1',
-      IMPLEMENT: 'gpt-4.1',
-      PR_REVIEW: 'gpt-4.1',
+      CONTEXT_PACK: 'gpt-4o-mini',
+      SPEC: 'gpt-4o',
+      IMPLEMENT: 'gpt-4o',
+      PR_REVIEW: 'gpt-4o',
     },
   },
   prReview: {
-    orchestrator: 'gpt-4.1',
-    scouts: ['gpt-4.1-mini'],
-    judge: 'gpt-4.1',
+    orchestrator: 'gpt-4o',
+    scouts: ['gpt-4o-mini'],
+    judge: 'gpt-4o',
   },
 };
 
 const QUICK_FIX_CONFIG: PresetConfig = {
   stages: QUICK_FIX_STAGES,
   models: {
-    default: 'gpt-4.1-mini',
+    default: 'gpt-4o-mini',
   },
 };
 
 const DOCS_ONLY_CONFIG: PresetConfig = {
   stages: DOCS_ONLY_STAGES,
   models: {
-    default: 'gpt-4.1-mini',
+    default: 'gpt-4o-mini',
   },
 };
 

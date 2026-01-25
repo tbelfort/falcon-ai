@@ -2,9 +2,9 @@ Brainstorm with me - We will make a plan to expand falcon-ai - It will go in spe
 
   Also move everything in specs/ to specs/archive - It's old now.
 
-  We will replace linear and manually using claude code and codex to implement the workflows in @CORE/TASKS/WORKFLOW/
+  We will replace linear and manually using Claude Code and OpenAI to implement the workflows in @CORE/TASKS/WORKFLOW/
 
-  The part where the user will be in claude code and codex will be the design phase.
+  The part where the user will be in Claude Code and OpenAI will be the design phase.
 
   Part 1:
 
@@ -95,7 +95,7 @@ Read the ai_docs about calling claude in non-interactive mode.
 
 We should have 2 modes, a debug mode, where on the ux the user can watch the output(in a debug tab), or a normal mode, where you disable output, and instead let the agents communicate via the api.
 
-For doing this with codex, search the web for how to do it to learn.
+For doing this with OpenAI, search the web for how to do it to learn.
 
 when falcon receives a work complete signal from the agent, it should then update the issue, change state etc and call the next agent
 
@@ -137,9 +137,9 @@ The user will be able to add his project directory when adding a new project via
 
 They might choose ~/Projects/some-project
 
-Let's say the user adds opus-1 and codex-1
+Let's say the user adds opus-1 and openai-1
 
-folders for them will be setup in ~/.falcon/projects/some-project/agents/codex-1 and claude-1
+folders for them will be setup in ~/.falcon/projects/some-project/agents/openai-1 and claude-1
 
 A git repo setup in each. 
 
@@ -149,11 +149,11 @@ large files won't be included in the git repo.
 
 falcon will setup a remote repo
 
-in the setup the github account will be able to be added and stored, as will multiple claude code max and codex pro subscriptions. API keys for llms will never be used.
+in the setup the github account will be able to be added and stored, as will multiple Claude Code and OpenAI subscriptions. API keys for llms will never be used.
 
 falcon-ai will handle the repos
 
-When an issue starts, falcon will choose an available agent based on what the user has added. Ie, if the user wants "haiku-4.5" then it'll choose the next available claude. If the user wants codex-5.2-xhigh, it'll choose the next available codex
+When an issue starts, falcon will choose an available agent based on what the user has added. Ie, if the user wants "haiku-4.5" then it'll choose the next available claude. If the user wants gpt-4o, it'll choose the next available openai
 
 They're be a screen showing what agents are in use. When an agent is working on an issue they can't be re-assigned, because we'll keep that agents folder in the right issue branch.
 
@@ -180,4 +180,3 @@ Once that stage is done, it's ready to merge, and then if there's any merge conf
 If there's no merge conflicts, then falcon can merge it, update all the agent folders that aren't on an active job, and pull from main.
 
 Remembering, once all active agents finish on an issue, they should pull main and be ready on the latest main. It's important to make sure ALL agents have always pulled from main before starting an issue and going into a branch.
-
