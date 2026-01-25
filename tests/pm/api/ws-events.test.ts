@@ -12,7 +12,7 @@ import { createServices } from '../../../src/pm/core/services/index.js';
 import { createInMemoryRepos } from '../../../src/pm/core/testing/in-memory-repos.js';
 
 describe('pm ws events', () => {
-  it('broadcasts project creation events', async () => {
+  it('broadcasts project update events', async () => {
     const repos = createInMemoryRepos();
     const services = createServices(repos, { now: () => 1_700_000_000 });
     const app = createApiApp({ services, broadcast });
@@ -25,24 +25,45 @@ describe('pm ws events', () => {
     const wsUrl = `ws://127.0.0.1:${address.port}/ws`;
 
     const ws = new WebSocket(wsUrl);
+    const messages: WsServerMessage[] = [];
+    const pending: Array<{
+      predicate: (msg: WsServerMessage) => boolean;
+      resolve: (msg: WsServerMessage) => void;
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }> = [];
 
-    const waitFor = (predicate: (msg: WsServerMessage) => boolean) =>
-      new Promise<WsServerMessage>((resolve, reject) => {
+    const handleMessage = (data: WebSocket.RawData) => {
+      const parsed = JSON.parse(data.toString()) as WsServerMessage;
+      messages.push(parsed);
+      for (const waiter of [...pending]) {
+        if (waiter.predicate(parsed)) {
+          clearTimeout(waiter.timeout);
+          pending.splice(pending.indexOf(waiter), 1);
+          waiter.resolve(parsed);
+        }
+      }
+    };
+
+    ws.on('message', handleMessage);
+
+    const waitFor = (predicate: (msg: WsServerMessage) => boolean) => {
+      const existing = messages.find(predicate);
+      if (existing) {
+        return Promise.resolve(existing);
+      }
+      return new Promise<WsServerMessage>((resolve, reject) => {
         const timeout = setTimeout(() => {
+          pending.splice(
+            pending.findIndex((item) => item.resolve === resolve),
+            1
+          );
           reject(new Error('Timed out waiting for WS message.'));
         }, 2000);
 
-        const handler = (data: WebSocket.RawData) => {
-          const parsed = JSON.parse(data.toString()) as WsServerMessage;
-          if (predicate(parsed)) {
-            clearTimeout(timeout);
-            ws.off('message', handler);
-            resolve(parsed);
-          }
-        };
-
-        ws.on('message', handler);
+        pending.push({ predicate, resolve, reject, timeout });
       });
+    };
 
     await waitFor((msg) => msg.type === 'connected');
 
@@ -58,15 +79,19 @@ describe('pm ws events', () => {
     ws.send(JSON.stringify({ type: 'subscribe', channel: `project:${projectId}` }));
     await waitFor((msg) => msg.type === 'subscribed');
 
+    await request(baseUrl)
+      .patch(`/api/projects/${projectId}`)
+      .send({ name: 'Broadcasted' });
+
     const eventMessage = await waitFor(
-      (msg) => msg.type === 'event' && msg.event === 'project.created'
+      (msg) => msg.type === 'event' && msg.event === 'project.updated'
     );
     if (eventMessage.type !== 'event') {
       throw new Error('Expected event message.');
     }
 
     expect(eventMessage.channel).toBe(`project:${projectId}`);
-    expect(eventMessage.data.type).toBe('project.created');
+    expect(eventMessage.data.type).toBe('project.updated');
     expect(eventMessage.data.projectId).toBe(projectId);
 
     ws.close();
@@ -97,25 +122,44 @@ describe('pm ws events', () => {
 
     const ws = new WebSocket(wsUrl);
     const messages: WsServerMessage[] = [];
+    const pending: Array<{
+      predicate: (msg: WsServerMessage) => boolean;
+      resolve: (msg: WsServerMessage) => void;
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }> = [];
 
-    const waitFor = (predicate: (msg: WsServerMessage) => boolean) =>
-      new Promise<WsServerMessage>((resolve, reject) => {
+    const handleMessage = (data: WebSocket.RawData) => {
+      const parsed = JSON.parse(data.toString()) as WsServerMessage;
+      messages.push(parsed);
+      for (const waiter of [...pending]) {
+        if (waiter.predicate(parsed)) {
+          clearTimeout(waiter.timeout);
+          pending.splice(pending.indexOf(waiter), 1);
+          waiter.resolve(parsed);
+        }
+      }
+    };
+
+    ws.on('message', handleMessage);
+
+    const waitFor = (predicate: (msg: WsServerMessage) => boolean) => {
+      const existing = messages.find(predicate);
+      if (existing) {
+        return Promise.resolve(existing);
+      }
+      return new Promise<WsServerMessage>((resolve, reject) => {
         const timeout = setTimeout(() => {
+          pending.splice(
+            pending.findIndex((item) => item.resolve === resolve),
+            1
+          );
           reject(new Error('Timed out waiting for WS message.'));
         }, 2000);
 
-        const handler = (data: WebSocket.RawData) => {
-          const parsed = JSON.parse(data.toString()) as WsServerMessage;
-          messages.push(parsed);
-          if (predicate(parsed)) {
-            clearTimeout(timeout);
-            ws.off('message', handler);
-            resolve(parsed);
-          }
-        };
-
-        ws.on('message', handler);
+        pending.push({ predicate, resolve, reject, timeout });
       });
+    };
 
     await waitFor((msg) => msg.type === 'connected');
     ws.send(JSON.stringify({ type: 'subscribe', channel: `project:${projectId}` }));

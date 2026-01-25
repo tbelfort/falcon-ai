@@ -121,10 +121,15 @@ describe('pm api issues', () => {
       priority: 'medium',
     });
 
-    const transitionResponse = await request(app)
+    const todoResponse = await request(app)
       .post(`/api/issues/${issueResponse.body.data.id}/transition`)
-      .send({ toStage: 'SPEC' });
-    expect(transitionResponse.status).toBe(200);
+      .send({ toStage: 'TODO' });
+    expect(todoResponse.status).toBe(200);
+
+    const packResponse = await request(app)
+      .post(`/api/issues/${issueResponse.body.data.id}/transition`)
+      .send({ toStage: 'CONTEXT_PACK' });
+    expect(packResponse.status).toBe(200);
 
     const startResponse = await request(app)
       .post(`/api/issues/${issueResponse.body.data.id}/start`)
