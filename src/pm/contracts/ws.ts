@@ -1,48 +1,107 @@
-import type { AgentStatus, IssueStage } from '../core/types.js';
+import type {
+  CommentDto,
+  DocumentDto,
+  IssueDto,
+  LabelDto,
+  ProjectDto,
+} from './http.js';
 
 export type WsEventType =
+  | 'project.created'
+  | 'project.updated'
+  | 'project.deleted'
   | 'issue.created'
   | 'issue.updated'
-  | 'issue.stage.changed'
+  | 'issue.deleted'
   | 'comment.created'
-  | 'agent.status.changed';
+  | 'label.created'
+  | 'document.created';
 
-export interface WsEnvelope<TPayload = unknown> {
-  type: WsEventType;
+export type WsChannel = `project:${string}` | `issue:${string}`;
+
+export interface WsServerConnectedMessage {
+  type: 'connected';
+  clientId: string;
+}
+
+export interface WsServerSubscribedMessage {
+  type: 'subscribed';
+  channel: string;
+}
+
+export interface WsServerUnsubscribedMessage {
+  type: 'unsubscribed';
+  channel: string;
+}
+
+export interface WsServerPongMessage {
+  type: 'pong';
+}
+
+export interface WsServerErrorMessage {
+  type: 'error';
+  message: string;
+}
+
+export interface WsServerEventMessage {
+  type: 'event';
+  channel: string;
+  event: WsEventType;
+  data: WsEvent;
+}
+
+export type WsServerMessage =
+  | WsServerConnectedMessage
+  | WsServerSubscribedMessage
+  | WsServerUnsubscribedMessage
+  | WsServerPongMessage
+  | WsServerEventMessage
+  | WsServerErrorMessage;
+
+export interface WsClientSubscribeMessage {
+  type: 'subscribe';
+  channel: string;
+}
+
+export interface WsClientUnsubscribeMessage {
+  type: 'unsubscribe';
+  channel: string;
+}
+
+export interface WsClientPingMessage {
+  type: 'ping';
+}
+
+export type WsClientMessage =
+  | WsClientSubscribeMessage
+  | WsClientUnsubscribeMessage
+  | WsClientPingMessage;
+
+export interface WsEventBase<TType extends WsEventType, TPayload> {
+  type: TType;
+  at: number;
+  projectId: string;
+  issueId?: string;
   payload: TPayload;
 }
 
-export interface IssueStageChangedPayload {
-  issueId: string;
-  projectId: string;
-  fromStage: IssueStage;
-  toStage: IssueStage;
-  changedAt: number;
-}
+export type ProjectEvent =
+  | WsEventBase<'project.created', ProjectDto>
+  | WsEventBase<'project.updated', ProjectDto>
+  | WsEventBase<'project.deleted', ProjectDto>;
 
-export interface IssueUpdatedPayload {
-  issueId: string;
-  projectId: string;
-  status?: string;
-  stage?: IssueStage;
-  updatedAt: number;
-}
+export type IssueEvent =
+  | WsEventBase<'issue.created', IssueDto>
+  | WsEventBase<'issue.updated', IssueDto>
+  | WsEventBase<'issue.deleted', IssueDto>;
 
-export interface CommentCreatedPayload {
-  issueId: string;
-  commentId: string;
-  createdAt: number;
-}
-
-export interface AgentStatusChangedPayload {
-  agentId: string;
-  projectId: string;
-  status: AgentStatus;
-  changedAt: number;
-}
+export type CommentEvent = WsEventBase<'comment.created', CommentDto>;
+export type LabelEvent = WsEventBase<'label.created', LabelDto>;
+export type DocumentEvent = WsEventBase<'document.created', DocumentDto>;
 
 export type WsEvent =
-  | WsEnvelope<IssueStageChangedPayload>
-  | WsEnvelope<IssueUpdatedPayload>
-  | WsEnvelope<CommentCreatedPayload>
-  | WsEnvelope<AgentStatusChangedPayload>;
+  | ProjectEvent
+  | IssueEvent
+  | CommentEvent
+  | LabelEvent
+  | DocumentEvent;

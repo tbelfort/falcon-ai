@@ -13,7 +13,7 @@ import type {
 
 export interface ApiSuccess<T> {
   data: T;
-  meta?: Record<string, unknown>;
+  meta?: ApiMeta;
 }
 
 export interface ApiError {
@@ -26,21 +26,32 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
-export interface ListMeta {
+export interface ApiMeta {
   total?: number;
-  limit?: number;
-  offset?: number;
+  page?: number;
+  perPage?: number;
 }
 
-export type ListResponse<T> = ApiSuccess<T[]> & { meta?: ListMeta };
+export type ListResponse<T> = ApiSuccess<T[]> & { meta?: ApiMeta };
 
-export type ProjectDTO = Project;
-export type IssueDTO = Issue;
-export type LabelDTO = Label;
-export type AgentDTO = Agent;
-export type DocumentDTO = Document;
-export type CommentDTO = Comment;
-export type StageMessageDTO = StageMessage;
-export type ModelPresetDTO = ModelPreset;
-export type WorkflowRunDTO = WorkflowRun;
-export type PRFindingDTO = PRFinding;
+export type ProjectDto = Project;
+export type IssueDto = Issue;
+export type LabelDto = Label;
+export type AgentDto = Agent;
+export type DocumentDto = Document;
+export type CommentDto = Comment;
+export type StageMessageDto = StageMessage;
+export type ModelPresetDto = ModelPreset;
+export type WorkflowRunDto = WorkflowRun;
+export type PRFindingDto = PRFinding;
+
+export type ProjectDTO = ProjectDto;
+export type IssueDTO = IssueDto;
+export type LabelDTO = LabelDto;
+export type AgentDTO = AgentDto;
+export type DocumentDTO = DocumentDto;
+export type CommentDTO = CommentDto;
+export type StageMessageDTO = StageMessageDto;
+export type ModelPresetDTO = ModelPresetDto;
+export type WorkflowRunDTO = WorkflowRunDto;
+export type PRFindingDTO = PRFindingDto;
