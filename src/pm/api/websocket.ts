@@ -42,6 +42,11 @@ export function setupWebSocket(server: import('http').Server): void {
     ws.on('close', () => {
       clients.delete(clientId);
     });
+
+    ws.on('error', (err) => {
+      console.error('WS error:', err);
+      clients.delete(clientId);
+    });
   });
 
   broadcaster = broadcast;

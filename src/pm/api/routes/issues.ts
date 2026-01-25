@@ -5,9 +5,20 @@ import { toApiError, getHttpStatus } from '../http-errors.js';
 import { getBroadcaster } from '../websocket.js';
 
 const VALID_STAGES: IssueStage[] = [
-  'BACKLOG', 'TODO', 'CONTEXT_PACK', 'CONTEXT_REVIEW', 'SPEC', 'SPEC_REVIEW',
-  'IMPLEMENT', 'PR_REVIEW', 'PR_HUMAN_REVIEW', 'FIXER', 'TESTING', 'DOC_REVIEW',
-  'MERGE_READY', 'DONE'
+  'BACKLOG',
+  'TODO',
+  'CONTEXT_PACK',
+  'CONTEXT_REVIEW',
+  'SPEC',
+  'SPEC_REVIEW',
+  'IMPLEMENT',
+  'PR_REVIEW',
+  'PR_HUMAN_REVIEW',
+  'FIXER',
+  'TESTING',
+  'DOC_REVIEW',
+  'MERGE_READY',
+  'DONE',
 ];
 
 export function createIssuesRouter(
@@ -95,10 +106,10 @@ export function createIssuesRouter(
     }
   });
 
-  router.post('/:id/transition', async (req, res) => {
+router.post('/:id/transition', async (req, res) => {
     try {
       const { toStage } = req.body;
-      if (!toStage || !VALID_STAGES.includes(toStage)) {
+      if (!toStage || !VALID_STAGES.includes(toStage as IssueStage)) {
         throw new Error('VALIDATION_ERROR');
       }
       const result = await issuesService.transitionIssue(req.params.id, toStage as IssueStage);

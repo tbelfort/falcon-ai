@@ -32,7 +32,6 @@ export function createCommentsRouter(
         parentId,
       });
       const broadcast = getBroadcaster();
-      broadcast('comment:' + result.data.id, 'comment.created', result.data);
       broadcast('issue:' + req.params.issueId, 'comment.created', result.data);
       res.status(201).json(result);
     } catch (error) {

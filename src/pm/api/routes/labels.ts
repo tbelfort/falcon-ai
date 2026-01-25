@@ -31,7 +31,7 @@ export function createLabelsRouter(
         description,
       });
       const broadcast = getBroadcaster();
-      broadcast('label:' + result.data.id, 'label.created', result.data);
+      broadcast('project:' + req.params.projectId, 'label.created', result.data);
       res.status(201).json(result);
     } catch (error) {
       const err = toApiError(error);

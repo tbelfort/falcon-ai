@@ -15,9 +15,6 @@ export class IssuesService {
       throw new Error('VALIDATION_ERROR');
     }
     const issues = await this.issues.findByProjectId(projectId);
-    for (const issue of issues) {
-      await this.issueLabels.getIssueLabelIds(issue.id);
-    }
     const result = [];
     for (const issue of issues) {
       const labelIds = await this.issueLabels.getIssueLabelIds(issue.id);

@@ -34,7 +34,7 @@ export function createDocumentsRouter(
         createdBy,
       });
       const broadcast = getBroadcaster();
-      broadcast('document:' + result.data.id, 'document.created', result.data);
+      broadcast('project:' + projectId, 'document.created', result.data);
       broadcast('issue:' + req.params.issueId, 'document.created', result.data);
       res.status(201).json(result);
     } catch (error) {
