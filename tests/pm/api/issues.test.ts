@@ -110,8 +110,8 @@ describe('Issues API', () => {
       })
       .expect(200);
     expect(startResponse.body.data.issue.status).toBe('in_progress');
-    expect(startResponse.body.data.stage).toBe('CONTEXT_PACK');
-    expect(startResponse.body.data.branchName).toBeDefined();
+    expect(startResponse.body.data.issue.stage).toBe('CONTEXT_PACK');
+    expect(startResponse.body.data.issue.branchName).toBeDefined();
   });
 
   it('should fail to start a non-startable issue', async () => {
@@ -120,14 +120,22 @@ describe('Issues API', () => {
       .send({
         projectId,
         title: 'Non-startable Issue',
-        status: 'in_progress',
       })
       .expect(201);
 
+    const issueId = createResponse.body.data.id;
+
     await request(app)
-      .post('/api/issues/' + createResponse.body.data.id + '/start')
+      .post('/api/issues/' + issueId + '/start')
       .send({
         presetId: 'preset-123',
+      })
+      .expect(200);
+
+    await request(app)
+      .post('/api/issues/' + issueId + '/start')
+      .send({
+        presetId: 'preset-456',
       })
       .expect(400);
   });

@@ -118,12 +118,9 @@ export class IssuesService {
     if (!issue) {
       throw new Error('NOT_FOUND');
     }
-    if (
-      issue.status !== 'backlog' &&
-      issue.status !== 'todo' &&
-      issue.stage !== 'BACKLOG' &&
-      issue.stage !== 'TODO'
-    ) {
+    const isValidStatus = issue.status === 'backlog' || issue.status === 'todo';
+    const isValidStage = issue.stage === 'BACKLOG' || issue.stage === 'TODO';
+    if (!isValidStatus || !isValidStage) {
       throw new Error('INVALID_TRANSITION');
     }
     const titleSlug = issue.title
