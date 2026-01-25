@@ -277,7 +277,7 @@ Agents are tied to subscription slots, not API keys.
 ```typescript
 interface Subscription {
   id: string;
-  type: 'claude' | 'openai';
+  type: 'claude' | 'codex';
   name: string;
   maxConcurrent: number;  // Usually 1 per subscription
   currentlyUsing: number;
@@ -309,7 +309,7 @@ async function releaseSlot(subscriptionId: string) {
 interface AgentAvailability {
   agentId: string;
   name: string;
-  type: 'claude' | 'openai';
+  type: 'claude' | 'codex';
   model: string;
   status: AgentStatus;
   availableAt?: Date;  // Estimated completion time

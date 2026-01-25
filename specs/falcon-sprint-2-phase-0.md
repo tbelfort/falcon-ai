@@ -96,7 +96,7 @@ export type IssueStage =
   | 'MERGE_READY'
   | 'DONE';
 
-export type AgentType = 'claude' | 'openai';
+export type AgentType = 'claude' | 'codex';
 export type AgentStatus = 'idle' | 'checkout' | 'working' | 'error';
 ```
 

@@ -148,17 +148,17 @@ async function validateGitHubToken(token: string): Promise<boolean> {
 
 ## Subscription Credential Storage
 
-Claude Code and OpenAI use local credentials; Falcon stores only references and never writes secrets into the database.
+Claude Code and Codex use local credentials; Falcon stores only references and never writes secrets into the database.
 
 ```typescript
 // No API keys stored in Falcon - credentials are managed via:
 // 1. Claude Code: ~/.claude/auth.json (managed by Claude Code)
-// 2. OpenAI: local credentials (managed by OpenAI CLI or env)
+// 2. Codex: ~/.codex/auth.json (managed by Codex CLI)
 
 // Falcon just tracks which subscriptions are configured
 interface SubscriptionConfig {
   id: string;
-  type: 'claude' | 'openai';
+  type: 'claude' | 'codex';
   name: string;  // Display name
   // No secrets stored here
 }
@@ -167,7 +167,7 @@ interface SubscriptionConfig {
 ### Validation
 
 ```typescript
-async function validateSubscription(type: 'claude' | 'openai'): Promise<boolean> {
+async function validateSubscription(type: 'claude' | 'codex'): Promise<boolean> {
   if (type === 'claude') {
     // Check if Claude Code is authenticated
     try {
@@ -178,8 +178,14 @@ async function validateSubscription(type: 'claude' | 'openai'): Promise<boolean>
     }
   }
 
-  if (type === 'openai') {
-    return Boolean(process.env.OPENAI_API_KEY);
+  if (type === 'codex') {
+    // Check if Codex CLI is authenticated
+    try {
+      const result = await exec('codex --version');
+      return result.exitCode === 0;
+    } catch {
+      return false;
+    }
   }
 
   return false;

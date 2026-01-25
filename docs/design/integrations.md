@@ -395,70 +395,57 @@ export async function invokeClaudeViaCLI(
 }
 ```
 
-## OpenAI Invocation
+## Codex Invocation
+
+Codex CLI is invoked as a non-interactive child process, similar to Claude Code.
 
 ```typescript
-import OpenAI from 'openai';
+import { spawn } from 'child_process';
+import { createInterface } from 'readline';
 
-export async function invokeOpenAIAgent(
-  workDir: string,
-  prompt: string
-): Promise<{ result: string; responseId: string }> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  process.chdir(workDir);  // Set working directory
-
-  const response = await client.responses.create({
-    model: 'gpt-4o-mini',
-    input: prompt,
-  });
-
-  return {
-    result: response.output_text ?? '',
-    responseId: response.id,
-  };
+interface CodexEvent {
+  type: string;
+  item?: { type: string; text?: string };
 }
 
-// Or via CLI
-export async function invokeOpenAIViaCLI(
+export async function invokeCodexAgent(
   workDir: string,
-  prompt: string
+  prompt: string,
+  onOutput?: (text: string) => void
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('openai', [
-      'responses',
-      'create',
-      '--model',
-      'gpt-4o-mini',
-      '--input',
-      prompt,
-    ], {
+    const child = spawn('codex', ['exec', '--json', prompt], {
       cwd: workDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      },
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let result = '';
 
     if (child.stdout) {
-      const rl = createInterface({ input: child.stdout });
+      const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
       rl.on('line', (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
         try {
-          const event = JSON.parse(line);
-          if (event.output_text) {
-            result += event.output_text;
+          const event = JSON.parse(trimmed) as CodexEvent;
+          if (event.item?.text) {
+            onOutput?.(event.item.text);
           }
-        } catch {}
+          if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
+            result = event.item.text ?? '';
+          }
+        } catch {
+          // ignore parse errors
+        }
       });
     }
 
     child.on('close', (code) => {
       if (code === 0) resolve(result);
-      else reject(new Error(`OpenAI CLI exited with code ${code}`));
+      else reject(new Error(`Codex CLI exited with code ${code}`));
     });
+
+    child.on('error', (err) => reject(err));
   });
 }
 ```
@@ -567,7 +554,7 @@ interface LLMProvider {
 // Registry for future providers
 const providers: Record<string, LLMProvider> = {
   'claude': claudeProvider,
-  'openai': openaiProvider,
+  'codex': codexProvider,
   // Future:
   // 'gemini': geminiProvider,
   // 'grok': grokProvider,
