@@ -1,48 +1,46 @@
-import type { AgentStatus, IssueStage } from '../core/types.js';
+import type {
+  CommentDto,
+  DocumentDto,
+  IssueDto,
+  LabelDto,
+  ProjectDto,
+} from './http.js';
 
 export type WsEventType =
+  | 'project.created'
+  | 'project.updated'
+  | 'project.deleted'
   | 'issue.created'
   | 'issue.updated'
-  | 'issue.stage.changed'
+  | 'issue.deleted'
   | 'comment.created'
-  | 'agent.status.changed';
+  | 'label.created'
+  | 'document.created';
 
-export interface WsEnvelope<TPayload = unknown> {
+export interface WsEventPayload<TPayload> {
   type: WsEventType;
+  at: number;
+  projectId: string;
+  issueId?: string | null;
   payload: TPayload;
 }
 
-export interface IssueStageChangedPayload {
-  issueId: string;
-  projectId: string;
-  fromStage: IssueStage;
-  toStage: IssueStage;
-  changedAt: number;
-}
+export type WsEventData =
+  | WsEventPayload<ProjectDto>
+  | WsEventPayload<IssueDto>
+  | WsEventPayload<CommentDto>
+  | WsEventPayload<LabelDto>
+  | WsEventPayload<DocumentDto>;
 
-export interface IssueUpdatedPayload {
-  issueId: string;
-  projectId: string;
-  status?: string;
-  stage?: IssueStage;
-  updatedAt: number;
-}
+export type WsServerMessage =
+  | { type: 'connected'; clientId: string }
+  | { type: 'subscribed'; channel: string }
+  | { type: 'unsubscribed'; channel: string }
+  | { type: 'pong' }
+  | { type: 'event'; channel: string; event: WsEventType; data: WsEventData }
+  | { type: 'error'; message: string };
 
-export interface CommentCreatedPayload {
-  issueId: string;
-  commentId: string;
-  createdAt: number;
-}
-
-export interface AgentStatusChangedPayload {
-  agentId: string;
-  projectId: string;
-  status: AgentStatus;
-  changedAt: number;
-}
-
-export type WsEvent =
-  | WsEnvelope<IssueStageChangedPayload>
-  | WsEnvelope<IssueUpdatedPayload>
-  | WsEnvelope<CommentCreatedPayload>
-  | WsEnvelope<AgentStatusChangedPayload>;
+export type WsClientMessage =
+  | { type: 'subscribe'; channel: string }
+  | { type: 'unsubscribe'; channel: string }
+  | { type: 'ping' };
