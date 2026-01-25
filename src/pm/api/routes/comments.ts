@@ -5,12 +5,13 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
+import { LIMITS } from '../validation.js';
 
 const createCommentSchema = z.object({
-  content: z.string().min(1),
+  content: z.string().min(1).max(LIMITS.comment),
   authorType: z.enum(['agent', 'human']),
-  authorName: z.string().min(1),
-  parentId: z.string().min(1).nullable().optional(),
+  authorName: z.string().min(1).max(LIMITS.authorName),
+  parentId: z.string().min(1).max(LIMITS.id).nullable().optional(),
 });
 
 export function createCommentsRouter(

@@ -14,12 +14,26 @@ export interface ApiServerOptions {
   broadcaster?: WsBroadcaster;
 }
 
+function resolveCorsOrigins(): string[] | boolean {
+  const raw = process.env.FALCON_PM_CORS_ORIGINS;
+  if (!raw) {
+    return true;
+  }
+
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return origins.length > 0 ? origins : true;
+}
+
 export function createApiServer(options: ApiServerOptions) {
   const app = express();
   const services = createPmServices(options.repos);
   const broadcaster = options.broadcaster ?? (() => undefined);
 
-  app.use(cors());
+  app.use(cors({ origin: resolveCorsOrigins() }));
   app.use(express.json());
 
   app.use('/api/projects', createProjectsRouter(services, broadcaster));

@@ -16,6 +16,10 @@ For local development, authentication is minimal. The API accepts:
 - `X-Agent-ID` header for agent-facing endpoints
 - Future: JWT tokens for multi-user support
 
+No authentication or rate limiting is enforced by default; the API is intended for localhost use only.
+
+CORS is open by default for local dev. To restrict origins, set `FALCON_PM_CORS_ORIGINS` to a comma-separated list of allowed origins.
+
 ## Response Format
 
 All responses follow this structure:

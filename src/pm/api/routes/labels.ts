@@ -5,11 +5,12 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
+import { LIMITS } from '../validation.js';
 
 const createLabelSchema = z.object({
-  name: z.string().min(1),
-  color: z.string().min(1).optional(),
-  description: z.string().min(1).nullable().optional(),
+  name: z.string().min(1).max(LIMITS.name),
+  color: z.string().min(1).max(LIMITS.color).optional(),
+  description: z.string().min(1).max(LIMITS.description).nullable().optional(),
   isBuiltin: z.boolean().optional(),
 });
 

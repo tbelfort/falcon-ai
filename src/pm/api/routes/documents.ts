@@ -5,14 +5,15 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
+import { isSafeRelativePath, LIMITS } from '../validation.js';
 
 const createDocumentSchema = z.object({
-  title: z.string().min(1),
+  title: z.string().min(1).max(LIMITS.title),
   docType: z.enum(['context_pack', 'spec', 'ai_doc', 'other']),
-  filePath: z.string().min(1),
-  contentHash: z.string().min(1).nullable().optional(),
+  filePath: z.string().min(1).max(LIMITS.filePath),
+  contentHash: z.string().min(1).max(LIMITS.contentHash).nullable().optional(),
   version: z.number().int().positive().optional(),
-  createdBy: z.string().min(1).nullable().optional(),
+  createdBy: z.string().min(1).max(LIMITS.authorName).nullable().optional(),
 });
 
 export function createDocumentsRouter(
@@ -37,6 +38,13 @@ export function createDocumentsRouter(
       return sendError(
         res,
         createError('VALIDATION_ERROR', 'Invalid document payload', parsed.error.flatten())
+      );
+    }
+
+    if (!isSafeRelativePath(parsed.data.filePath)) {
+      return sendError(
+        res,
+        createError('VALIDATION_ERROR', 'Invalid document filePath')
       );
     }
 

@@ -5,21 +5,22 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
+import { LIMITS } from '../validation.js';
 
 const createProjectSchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1),
-  description: z.string().min(1).nullable().optional(),
-  repoUrl: z.string().min(1).nullable().optional(),
-  defaultBranch: z.string().min(1).optional(),
+  name: z.string().min(1).max(LIMITS.name),
+  slug: z.string().min(1).max(LIMITS.slug),
+  description: z.string().min(1).max(LIMITS.description).nullable().optional(),
+  repoUrl: z.string().min(1).max(LIMITS.url).nullable().optional(),
+  defaultBranch: z.string().min(1).max(LIMITS.branch).optional(),
 });
 
 const updateProjectSchema = z.object({
-  name: z.string().min(1).optional(),
-  slug: z.string().min(1).optional(),
-  description: z.string().min(1).nullable().optional(),
-  repoUrl: z.string().min(1).nullable().optional(),
-  defaultBranch: z.string().min(1).optional(),
+  name: z.string().min(1).max(LIMITS.name).optional(),
+  slug: z.string().min(1).max(LIMITS.slug).optional(),
+  description: z.string().min(1).max(LIMITS.description).nullable().optional(),
+  repoUrl: z.string().min(1).max(LIMITS.url).nullable().optional(),
+  defaultBranch: z.string().min(1).max(LIMITS.branch).optional(),
   config: z.unknown().optional(),
 });
 

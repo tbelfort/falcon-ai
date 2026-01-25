@@ -99,4 +99,91 @@ describe('pm api ws events', () => {
     hub.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
+
+  it('broadcasts label, comment, document, and issue updates', async () => {
+    const repos = createInMemoryRepos();
+    const hub = createWebSocketHub();
+    const app = createApiServer({ repos, broadcaster: hub.broadcast });
+    const server = createServer(app);
+    hub.setupWebSocket(server);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+
+    const projectRes = await request(app)
+      .post('/api/projects')
+      .send({ name: 'Project', slug: 'project', defaultBranch: 'main' });
+    const projectId = projectRes.body.data.id as string;
+
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    const queue = createMessageQueue(ws);
+    await queue.waitForMessage((message) => message.type === 'connected');
+    ws.send(JSON.stringify({ type: 'subscribe', channel: `project:${projectId}` }));
+    await queue.waitForMessage(
+      (message) => message.type === 'subscribed' && message.channel === `project:${projectId}`
+    );
+
+    await request(app)
+      .post(`/api/projects/${projectId}/labels`)
+      .send({ name: 'bug', color: '#ef4444' });
+
+    const labelMessage = await queue.waitForMessage(
+      (message) => message.type === 'event' && message.event === 'label.created'
+    );
+    if (labelMessage.type !== 'event') {
+      throw new Error('Expected event message');
+    }
+    expect(labelMessage.data.type).toBe('label.created');
+
+    const issueRes = await request(app)
+      .post('/api/issues')
+      .send({ projectId, title: 'Fix bug', priority: 'medium' });
+    const issueId = issueRes.body.data.id as string;
+
+    await queue.waitForMessage(
+      (message) => message.type === 'event' && message.event === 'issue.created'
+    );
+
+    await request(app)
+      .post(`/api/issues/${issueId}/comments`)
+      .send({ content: 'Looks good', authorType: 'human', authorName: 'Alex' });
+
+    const commentMessage = await queue.waitForMessage(
+      (message) => message.type === 'event' && message.event === 'comment.created'
+    );
+    if (commentMessage.type !== 'event') {
+      throw new Error('Expected event message');
+    }
+    const commentEvent = commentMessage.data as { issueId: string; type: string };
+    expect(commentEvent.issueId).toBe(issueId);
+
+    await request(app)
+      .post(`/api/issues/${issueId}/documents`)
+      .send({
+        title: 'Context Pack',
+        docType: 'context_pack',
+        filePath: '.falcon/issues/1/context/context-pack.md',
+      });
+
+    const documentMessage = await queue.waitForMessage(
+      (message) => message.type === 'event' && message.event === 'document.created'
+    );
+    if (documentMessage.type !== 'event') {
+      throw new Error('Expected event message');
+    }
+    const documentEvent = documentMessage.data as { issueId: string; type: string };
+    expect(documentEvent.issueId).toBe(issueId);
+
+    await request(app)
+      .patch(`/api/issues/${issueId}`)
+      .send({ title: 'Fix bug soon' });
+
+    await queue.waitForMessage(
+      (message) => message.type === 'event' && message.event === 'issue.updated'
+    );
+
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
 });

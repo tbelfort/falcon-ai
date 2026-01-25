@@ -5,7 +5,7 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
-import { requireString } from '../validation.js';
+import { LIMITS, requireString } from '../validation.js';
 
 const issuePrioritySchema = z.enum(['low', 'medium', 'high', 'critical']);
 const issueStageSchema = z.enum([
@@ -26,21 +26,21 @@ const issueStageSchema = z.enum([
 ]);
 
 const createIssueSchema = z.object({
-  projectId: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string().min(1).nullable().optional(),
+  projectId: z.string().min(1).max(LIMITS.id),
+  title: z.string().min(1).max(LIMITS.title),
+  description: z.string().min(1).max(LIMITS.description).nullable().optional(),
   priority: issuePrioritySchema.optional(),
 });
 
 const updateIssueSchema = z.object({
-  title: z.string().min(1).optional(),
-  description: z.string().min(1).nullable().optional(),
+  title: z.string().min(1).max(LIMITS.title).optional(),
+  description: z.string().min(1).max(LIMITS.description).nullable().optional(),
   priority: issuePrioritySchema.optional(),
-  labelIds: z.array(z.string().min(1)).optional(),
+  labelIds: z.array(z.string().min(1).max(LIMITS.id)).max(LIMITS.labelIds).optional(),
 });
 
 const startIssueSchema = z.object({
-  presetId: z.string().min(1),
+  presetId: z.string().min(1).max(LIMITS.id),
 });
 
 const transitionIssueSchema = z.object({
@@ -55,7 +55,7 @@ export function createIssuesRouter(
 
   router.get('/', (req, res) => {
     const projectId = requireString(req.query.projectId);
-    if (!projectId) {
+    if (!projectId || projectId.length > LIMITS.id) {
       return sendError(
         res,
         createError('VALIDATION_ERROR', 'projectId query parameter is required')
