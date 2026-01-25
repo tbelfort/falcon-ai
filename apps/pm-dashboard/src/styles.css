@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&family=Sora:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg-start: #f8fafc;
+  --bg-end: #e2e8f0;
+  --ink-900: #0f172a;
+  --ink-700: #1f2a44;
+  --mist: #f8fafc;
+}
+
+body {
+  font-family: 'Sora', ui-sans-serif, system-ui;
+  color: var(--ink-900);
+  background: radial-gradient(circle at top left, #e0f2fe, transparent 55%),
+    radial-gradient(circle at 10% 20%, #fef9c3, transparent 42%),
+    linear-gradient(180deg, var(--bg-start), var(--bg-end));
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.6);
+  border-radius: 999px;
+}
