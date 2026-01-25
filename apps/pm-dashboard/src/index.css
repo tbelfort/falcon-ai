@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Spline+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --panel-bg: rgba(255, 255, 255, 0.9);
+  --panel-border: rgba(15, 15, 15, 0.08);
+}
+
+body {
+  margin: 0;
+  font-family: 'Spline Sans', sans-serif;
+  background: linear-gradient(120deg, #f7f4ef 0%, #f2f8f7 45%, #fef6ee 100%);
+  color: #141414;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  min-height: 100vh;
+}
