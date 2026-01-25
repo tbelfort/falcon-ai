@@ -4,13 +4,15 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { WsClientMessage, WsServerMessage } from '../contracts/ws.js';
 
 type Client = { ws: WebSocket; subscriptions: Set<string> };
+const MAX_SUBSCRIPTIONS = 100;
+const MAX_PAYLOAD_BYTES = 64 * 1024;
 
 export function createWebSocketHub() {
   const clients = new Map<string, Client>();
   let wss: WebSocketServer | null = null;
 
   function setupWebSocket(server: HttpServer) {
-    wss = new WebSocketServer({ server, path: '/ws' });
+    wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_PAYLOAD_BYTES });
 
     wss.on('connection', (ws) => {
       const clientId = randomUUID();
@@ -33,6 +35,17 @@ export function createWebSocketHub() {
         }
 
         if (msg.type === 'subscribe') {
+          if (
+            !client.subscriptions.has(msg.channel)
+            && client.subscriptions.size >= MAX_SUBSCRIPTIONS
+          ) {
+            ws.send(
+              JSON.stringify(
+                { type: 'error', message: 'Subscription limit exceeded' } satisfies WsServerMessage
+              )
+            );
+            return;
+          }
           client.subscriptions.add(msg.channel);
           ws.send(
             JSON.stringify(
@@ -56,6 +69,10 @@ export function createWebSocketHub() {
       });
 
       ws.on('close', () => {
+        clients.delete(clientId);
+      });
+
+      ws.on('error', () => {
         clients.delete(clientId);
       });
     });

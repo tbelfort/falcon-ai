@@ -4,6 +4,7 @@ import { createError } from '../errors.js';
 import type { LabelRepo } from '../repos/labels.js';
 import type { ProjectRepo } from '../repos/projects.js';
 import { labelCreatedEvent } from '../events.js';
+import { unixSeconds } from '../utils/time.js';
 import { err, ok } from './service-result.js';
 
 export interface CreateLabelInput {
@@ -35,7 +36,7 @@ export class LabelsService {
       return err(createError('CONFLICT', 'Label name already exists'));
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const label: LabelDto = this.labels.create({
       id: randomUUID(),
       projectId: input.projectId,

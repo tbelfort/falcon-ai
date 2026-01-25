@@ -7,6 +7,7 @@ import type { LabelRepo } from '../repos/labels.js';
 import type { ProjectRepo } from '../repos/projects.js';
 import { issueEvent } from '../events.js';
 import { toKebabCase } from '../utils/slugify.js';
+import { unixSeconds } from '../utils/time.js';
 import { err, ok } from './service-result.js';
 
 export interface CreateIssueInput {
@@ -64,7 +65,7 @@ export class IssuesService {
       return err(createError('NOT_FOUND', 'Project not found'));
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const issue: IssueRecord = this.issues.create({
       id: randomUUID(),
       projectId: input.projectId,
@@ -110,7 +111,7 @@ export class IssuesService {
       }
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const updated = this.issues.update(id, {
       title: input.title,
       description: input.description,
@@ -138,7 +139,7 @@ export class IssuesService {
       return err(createError('VALIDATION_ERROR', 'Issue is not startable'));
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const branchName = `issue/${issue.number}-${toKebabCase(issue.title)}`;
     const updated = this.issues.update(id, {
       presetId: input.presetId,
@@ -173,9 +174,13 @@ export class IssuesService {
       return err(createError('INVALID_TRANSITION', 'Stage transition not allowed'));
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
+    const nextStatus = this.statusForStage(input.toStage);
+    const completedAt = input.toStage === 'DONE' ? now : issue.completedAt;
     const updated = this.issues.update(id, {
       stage: input.toStage,
+      status: nextStatus,
+      completedAt,
       updatedAt: now,
     });
 
@@ -252,5 +257,21 @@ export class IssuesService {
     }
 
     return { ok: true as const, error: null };
+  }
+
+  private statusForStage(stage: IssueRecord['stage']): IssueStatus {
+    if (stage === 'BACKLOG') {
+      return 'backlog';
+    }
+
+    if (stage === 'TODO') {
+      return 'todo';
+    }
+
+    if (stage === 'DONE') {
+      return 'done';
+    }
+
+    return 'in_progress';
   }
 }

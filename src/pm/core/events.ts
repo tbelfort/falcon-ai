@@ -13,11 +13,12 @@ import type {
   LabelDto,
   ProjectDto,
 } from '../contracts/http.js';
+import { unixSeconds } from './utils/time.js';
 
 export function projectEvent(
   type: ProjectEvent['type'],
   project: ProjectDto,
-  at: number = Date.now()
+  at: number = unixSeconds()
 ): ProjectEvent {
   return {
     type,
@@ -30,7 +31,7 @@ export function projectEvent(
 export function issueEvent(
   type: IssueEvent['type'],
   issue: IssueDto,
-  at: number = Date.now()
+  at: number = unixSeconds()
 ): IssueEvent {
   return {
     type,
@@ -44,7 +45,7 @@ export function issueEvent(
 export function commentCreatedEvent(
   comment: CommentDto,
   projectId: string,
-  at: number = Date.now()
+  at: number = unixSeconds()
 ): CommentCreatedEvent {
   return {
     type: 'comment.created',
@@ -57,7 +58,7 @@ export function commentCreatedEvent(
 
 export function labelCreatedEvent(
   label: LabelDto,
-  at: number = Date.now()
+  at: number = unixSeconds()
 ): LabelCreatedEvent {
   return {
     type: 'label.created',
@@ -71,7 +72,7 @@ export function documentCreatedEvent(
   document: DocumentDto,
   projectId: string,
   issueId: string,
-  at: number = Date.now()
+  at: number = unixSeconds()
 ): DocumentCreatedEvent {
   return {
     type: 'document.created',

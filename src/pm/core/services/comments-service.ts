@@ -4,6 +4,7 @@ import { createError } from '../errors.js';
 import type { CommentRepo } from '../repos/comments.js';
 import type { IssueRepo } from '../repos/issues.js';
 import { commentCreatedEvent } from '../events.js';
+import { unixSeconds } from '../utils/time.js';
 import { err, ok } from './service-result.js';
 
 export interface CreateCommentInput {
@@ -30,7 +31,16 @@ export class CommentsService {
       return err(createError('NOT_FOUND', 'Issue not found'));
     }
 
-    const now = Date.now();
+    if (input.parentId) {
+      const parent = this.comments
+        .listByIssue(input.issueId)
+        .find((comment) => comment.id === input.parentId);
+      if (!parent) {
+        return err(createError('VALIDATION_ERROR', 'Parent comment not found'));
+      }
+    }
+
+    const now = unixSeconds();
     const comment: CommentDto = this.comments.create({
       id: randomUUID(),
       issueId: input.issueId,

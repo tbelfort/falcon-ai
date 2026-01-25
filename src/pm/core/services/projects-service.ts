@@ -3,6 +3,7 @@ import type { ProjectDto } from '../../contracts/http.js';
 import { createError } from '../errors.js';
 import type { ProjectRepo } from '../repos/projects.js';
 import { projectEvent } from '../events.js';
+import { unixSeconds } from '../utils/time.js';
 import { err, ok } from './service-result.js';
 
 export interface CreateProjectInput {
@@ -44,7 +45,7 @@ export class ProjectsService {
       return err(createError('CONFLICT', 'Project slug already exists'));
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const project: ProjectDto = this.repo.create({
       id: randomUUID(),
       name: input.name,
@@ -73,7 +74,7 @@ export class ProjectsService {
       }
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const updated = this.repo.update(id, {
       ...input,
       updatedAt: now,

@@ -4,6 +4,7 @@ import { createError } from '../errors.js';
 import type { DocumentRepo } from '../repos/documents.js';
 import type { IssueRepo } from '../repos/issues.js';
 import { documentCreatedEvent } from '../events.js';
+import { unixSeconds } from '../utils/time.js';
 import { err, ok } from './service-result.js';
 
 export interface CreateDocumentInput {
@@ -32,7 +33,7 @@ export class DocumentsService {
       return err(createError('NOT_FOUND', 'Issue not found'));
     }
 
-    const now = Date.now();
+    const now = unixSeconds();
     const document: DocumentDto = this.documents.create({
       id: randomUUID(),
       projectId: issue.projectId,

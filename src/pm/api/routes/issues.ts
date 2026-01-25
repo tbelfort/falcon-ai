@@ -5,6 +5,7 @@ import type { PmServices } from '../../core/services/index.js';
 import { broadcastEvents, type WsBroadcaster } from '../broadcast.js';
 import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
+import { requireString } from '../validation.js';
 
 const issuePrioritySchema = z.enum(['low', 'medium', 'high', 'critical']);
 const issueStageSchema = z.enum([
@@ -53,8 +54,8 @@ export function createIssuesRouter(
   const router = Router();
 
   router.get('/', (req, res) => {
-    const projectId = req.query.projectId;
-    if (typeof projectId !== 'string' || projectId.length === 0) {
+    const projectId = requireString(req.query.projectId);
+    if (!projectId) {
       return sendError(
         res,
         createError('VALIDATION_ERROR', 'projectId query parameter is required')
