@@ -1,48 +1,65 @@
-import type { AgentStatus, IssueStage } from '../core/types.js';
+import type {
+  CommentDto,
+  DocumentDto,
+  IssueDto,
+  LabelDto,
+  ProjectDto,
+} from './http.js';
 
-export type WsEventType =
-  | 'issue.created'
-  | 'issue.updated'
-  | 'issue.stage.changed'
-  | 'comment.created'
-  | 'agent.status.changed';
+export type WsServerMessage =
+  | { type: 'connected'; clientId: string }
+  | { type: 'subscribed'; channel: string }
+  | { type: 'unsubscribed'; channel: string }
+  | { type: 'pong' }
+  | { type: 'event'; channel: string; event: string; data: WsEventPayload }
+  | { type: 'error'; message: string };
 
-export interface WsEnvelope<TPayload = unknown> {
-  type: WsEventType;
-  payload: TPayload;
-}
+export type WsClientMessage =
+  | { type: 'subscribe'; channel: string }
+  | { type: 'unsubscribe'; channel: string }
+  | { type: 'ping' };
 
-export interface IssueStageChangedPayload {
-  issueId: string;
+export interface ProjectEventPayload {
+  type: 'project.created' | 'project.updated' | 'project.deleted';
+  at: number;
   projectId: string;
-  fromStage: IssueStage;
-  toStage: IssueStage;
-  changedAt: number;
+  payload: ProjectDto;
 }
 
-export interface IssueUpdatedPayload {
-  issueId: string;
+export interface IssueEventPayload {
+  type: 'issue.created' | 'issue.updated' | 'issue.deleted';
+  at: number;
   projectId: string;
-  status?: string;
-  stage?: IssueStage;
-  updatedAt: number;
-}
-
-export interface CommentCreatedPayload {
   issueId: string;
-  commentId: string;
-  createdAt: number;
+  payload: IssueDto;
 }
 
-export interface AgentStatusChangedPayload {
-  agentId: string;
+export interface CommentEventPayload {
+  type: 'comment.created';
+  at: number;
   projectId: string;
-  status: AgentStatus;
-  changedAt: number;
+  issueId: string;
+  payload: CommentDto;
 }
 
-export type WsEvent =
-  | WsEnvelope<IssueStageChangedPayload>
-  | WsEnvelope<IssueUpdatedPayload>
-  | WsEnvelope<CommentCreatedPayload>
-  | WsEnvelope<AgentStatusChangedPayload>;
+export interface LabelEventPayload {
+  type: 'label.created';
+  at: number;
+  projectId: string;
+  payload: LabelDto;
+}
+
+export interface DocumentEventPayload {
+  type: 'document.created';
+  at: number;
+  projectId: string;
+  issueId: string;
+  payload: DocumentDto;
+}
+
+export type WsEventPayload =
+  | ProjectEventPayload
+  | IssueEventPayload
+  | CommentEventPayload
+  | LabelEventPayload
+  | DocumentEventPayload;
