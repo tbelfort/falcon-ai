@@ -1,0 +1,99 @@
+import type {
+  ApiError,
+  ApiResponse,
+  CommentDto,
+  IssueDto,
+  IssueStage,
+  LabelDto,
+  ProjectDto,
+} from './types';
+
+export class ApiRequestError extends Error {
+  code: string;
+  details?: unknown;
+  status?: number;
+
+  constructor(message: string, code: string, details?: unknown, status?: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.code = code;
+    this.details = details;
+    this.status = status;
+  }
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  let payload: ApiResponse<T> | undefined;
+
+  try {
+    payload = (await response.json()) as ApiResponse<T>;
+  } catch (error) {
+    throw new ApiRequestError('Invalid JSON response', 'invalid_json', error, response.status);
+  }
+
+  if ('error' in payload) {
+    const apiError = payload.error as ApiError['error'];
+    throw new ApiRequestError(apiError.message, apiError.code, apiError.details, response.status);
+  }
+
+  return payload.data;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const { signal, ...rest } = options;
+  const resolvedOptions: RequestInit = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers ?? {}),
+    },
+    ...rest,
+  };
+
+  if (signal && !import.meta.env.VITEST) {
+    resolvedOptions.signal = signal;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, resolvedOptions);
+
+  return parseResponse<T>(response);
+}
+
+export function fetchProjects(signal?: AbortSignal): Promise<ProjectDto[]> {
+  return request<ProjectDto[]>('/api/projects', { signal });
+}
+
+export function fetchIssues(projectId: string, signal?: AbortSignal): Promise<IssueDto[]> {
+  const params = new URLSearchParams({ projectId });
+  return request<IssueDto[]>(`/api/issues?${params.toString()}`, { signal });
+}
+
+export function fetchLabels(projectId: string, signal?: AbortSignal): Promise<LabelDto[]> {
+  return request<LabelDto[]>(`/api/projects/${projectId}/labels`, { signal });
+}
+
+export function fetchComments(issueId: string): Promise<CommentDto[]> {
+  return request<CommentDto[]>(`/api/issues/${issueId}/comments`);
+}
+
+export function createComment(issueId: string, content: string, authorName?: string): Promise<CommentDto> {
+  return request<CommentDto>(`/api/issues/${issueId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content, authorName }),
+  });
+}
+
+export function transitionIssue(issueId: string, toStage: IssueStage): Promise<IssueDto> {
+  return request<IssueDto>(`/api/issues/${issueId}/transition`, {
+    method: 'POST',
+    body: JSON.stringify({ toStage }),
+  });
+}
+
+export function updateIssueLabels(issueId: string, labelIds: string[]): Promise<IssueDto> {
+  return request<IssueDto>(`/api/issues/${issueId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ labelIds }),
+  });
+}

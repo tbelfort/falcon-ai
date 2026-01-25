@@ -1,0 +1,197 @@
+import { create } from 'zustand';
+import {
+  createComment,
+  fetchComments,
+  fetchIssues,
+  fetchLabels,
+  transitionIssue,
+  updateIssueLabels,
+} from '@/api/client';
+import type { CommentDto, IssueDto, IssueStage, LabelDto } from '@/api/types';
+import type { AsyncState } from './types';
+import { errorState, idleState, loadingState, successState } from './types';
+
+type IssuesState = {
+  issues: AsyncState<IssueDto[]>;
+  labelsByProjectId: Record<string, AsyncState<LabelDto[]>>;
+  commentsByIssueId: Record<string, AsyncState<CommentDto[]>>;
+  issuesAbortController: AbortController | null;
+  labelsAbortController: AbortController | null;
+  loadIssues: (projectId: string) => Promise<void>;
+  loadLabels: (projectId: string) => Promise<void>;
+  loadComments: (issueId: string) => Promise<void>;
+  addComment: (issueId: string, content: string, authorName?: string) => Promise<void>;
+  moveIssueStage: (issueId: string, toStage: IssueStage, onError: (message: string) => void) => Promise<void>;
+  updateLabels: (issueId: string, labelIds: string[]) => Promise<void>;
+  replaceIssue: (issue: IssueDto) => void;
+  reset: () => void;
+};
+
+function updateIssueList(issues: IssueDto[], updated: IssueDto): IssueDto[] {
+  return issues.map((issue) => (issue.id === updated.id ? updated : issue));
+}
+
+export const useIssuesStore = create<IssuesState>((set, get) => ({
+  issues: idleState,
+  labelsByProjectId: {},
+  commentsByIssueId: {},
+  issuesAbortController: null,
+  labelsAbortController: null,
+  loadIssues: async (projectId) => {
+    const { issuesAbortController: current } = get();
+    if (current) {
+      current.abort();
+    }
+
+    const controller = new AbortController();
+    set({ issues: loadingState, issuesAbortController: controller });
+
+    try {
+      const issues = await fetchIssues(projectId, controller.signal);
+      set({ issues: successState(issues), issuesAbortController: null });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : 'Unable to load issues';
+      set({ issues: errorState(message), issuesAbortController: null });
+    }
+  },
+  loadLabels: async (projectId) => {
+    const { labelsAbortController: current } = get();
+    if (current) {
+      current.abort();
+    }
+
+    const controller = new AbortController();
+    set((state) => ({
+      labelsByProjectId: {
+        ...state.labelsByProjectId,
+        [projectId]: loadingState,
+      },
+      labelsAbortController: controller,
+    }));
+
+    try {
+      const labels = await fetchLabels(projectId, controller.signal);
+      set((state) => ({
+        labelsByProjectId: {
+          ...state.labelsByProjectId,
+          [projectId]: successState(labels),
+        },
+        labelsAbortController: null,
+      }));
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : 'Unable to load labels';
+      set((state) => ({
+        labelsByProjectId: {
+          ...state.labelsByProjectId,
+          [projectId]: errorState(message),
+        },
+        labelsAbortController: null,
+      }));
+    }
+  },
+  loadComments: async (issueId) => {
+    set((state) => ({
+      commentsByIssueId: {
+        ...state.commentsByIssueId,
+        [issueId]: loadingState,
+      },
+    }));
+
+    try {
+      const comments = await fetchComments(issueId);
+      set((state) => ({
+        commentsByIssueId: {
+          ...state.commentsByIssueId,
+          [issueId]: successState(comments),
+        },
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load comments';
+      set((state) => ({
+        commentsByIssueId: {
+          ...state.commentsByIssueId,
+          [issueId]: errorState(message),
+        },
+      }));
+    }
+  },
+  addComment: async (issueId, content, authorName) => {
+    const newComment = await createComment(issueId, content, authorName);
+    set((state) => {
+      const existing = state.commentsByIssueId[issueId];
+      if (!existing || existing.status !== 'success') {
+        return {
+          commentsByIssueId: {
+            ...state.commentsByIssueId,
+            [issueId]: successState([newComment]),
+          },
+        };
+      }
+
+      return {
+        commentsByIssueId: {
+          ...state.commentsByIssueId,
+          [issueId]: successState([...existing.data, newComment]),
+        },
+      };
+    });
+  },
+  moveIssueStage: async (issueId, toStage, onError) => {
+    const current = get().issues;
+    if (current.status !== 'success') {
+      return;
+    }
+
+    const existing = current.data.find((issue) => issue.id === issueId);
+    if (!existing) {
+      return;
+    }
+
+    const optimistic = current.data.map((issue) =>
+      issue.id === issueId ? { ...issue, stage: toStage } : issue,
+    );
+    set({ issues: successState(optimistic) });
+
+    try {
+      const updated = await transitionIssue(issueId, toStage);
+      set({ issues: successState(updateIssueList(optimistic, updated)) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Stage transition failed';
+      set({ issues: successState(current.data) });
+      onError(message);
+    }
+  },
+  updateLabels: async (issueId, labelIds) => {
+    const current = get().issues;
+    if (current.status !== 'success') {
+      return;
+    }
+
+    try {
+      const updated = await updateIssueLabels(issueId, labelIds);
+      set({ issues: successState(updateIssueList(current.data, updated)) });
+    } catch (error) {
+      console.error(error);
+    }
+  },
+  replaceIssue: (issue) => {
+    const current = get().issues;
+    if (current.status !== 'success') {
+      return;
+    }
+    set({ issues: successState(updateIssueList(current.data, issue)) });
+  },
+  reset: () => set({
+    issues: idleState,
+    labelsByProjectId: {},
+    commentsByIssueId: {},
+    issuesAbortController: null,
+    labelsAbortController: null,
+  }),
+}));
