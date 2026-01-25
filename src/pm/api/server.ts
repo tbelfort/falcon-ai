@@ -13,11 +13,11 @@ import { LabelsService } from '../core/services/labels.service.js';
 import { CommentsService } from '../core/services/comments.service.js';
 import { DocumentsService } from '../core/services/documents.service.js';
 
-export function createServer(port?: number) {
+export function createServer(port?: number, host?: string) {
   const app = express();
 
-  app.use(cors());
-  app.use(express.json());
+  app.use(cors({ origin: 'http://localhost:3000' }));
+  app.use(express.json({ limit: '100kb' }));
 
   const repos = createInMemoryRepos();
   const projectsService = new ProjectsService(repos.projects);
@@ -36,11 +36,13 @@ export function createServer(port?: number) {
     res.json({ status: 'ok' });
   });
 
-  const server = app.listen(port || 3002, port ? undefined : () => {
-    console.log('API server listening on port 3002');
-  });
-
-  setupWebSocket(server);
+  if (port !== undefined) {
+    const bindHost = host ?? '127.0.0.1';
+    const server = app.listen(port, bindHost, () => {
+      console.log(`API server listening on ${bindHost}:${port}`);
+    });
+    setupWebSocket(server);
+  }
 
   return app;
 }

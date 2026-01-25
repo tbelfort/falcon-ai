@@ -1,4 +1,22 @@
+import * as path from 'node:path';
 import type { DocumentRepo, IssueRepo, ProjectRepo } from '../repos/index.js';
+
+function isValidFilePath(filePath: string): boolean {
+  if (!filePath || typeof filePath !== 'string') {
+    return false;
+  }
+  if (filePath.includes('\0')) {
+    return false;
+  }
+  if (path.isAbsolute(filePath)) {
+    return false;
+  }
+  const normalized = path.normalize(filePath);
+  if (normalized.startsWith('..') || normalized.includes('/../') || normalized.includes('\\..\\')) {
+    return false;
+  }
+  return true;
+}
 
 export class DocumentsService {
   constructor(
@@ -48,6 +66,9 @@ export class DocumentsService {
     contentHash?: string;
     createdBy?: string;
   }) {
+    if (!isValidFilePath(data.filePath)) {
+      throw new Error('VALIDATION_ERROR');
+    }
     const document = await this.documents.create({
       projectId: data.projectId,
       issueId: data.issueId ?? null,

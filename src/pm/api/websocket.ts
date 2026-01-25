@@ -22,7 +22,7 @@ let broadcaster: ((channel: string, event: string, data: unknown) => void) | nul
 
 export function setupWebSocket(server: import('http').Server): void {
   const { WebSocketServer: WSS } = require('ws');
-  const wss = new WSS({ server, path: '/ws' });
+  const wss = new WSS({ server, path: '/ws', maxPayload: 64 * 1024 });
 
   wss.on('connection', (ws: WebSocket) => {
     const clientId = randomUUID();
@@ -77,7 +77,7 @@ function broadcast(channel: string, event: string, data: unknown): void {
 
 export function getBroadcaster() {
   if (!broadcaster) {
-    throw new Error('WebSocket server not initialized');
+    return () => {};
   }
   return broadcaster;
 }

@@ -145,7 +145,7 @@ export class IssuesService {
       data: {
         issue: result,
         branchName: updated.branchName ?? '',
-        nextStage: 'CONTEXT_PACK',
+        stage: 'CONTEXT_PACK',
       },
     };
   }
