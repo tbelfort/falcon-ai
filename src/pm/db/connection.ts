@@ -9,12 +9,36 @@ let cachedSqlite: Database.Database | null = null;
 let cachedDb: BetterSQLite3Database<typeof schema> | null = null;
 let cachedPath: string | null = null;
 
+function updateCache(
+  dbPath: string,
+  sqlite: Database.Database | null,
+  db: BetterSQLite3Database<typeof schema> | null
+): void {
+  cachedSqlite = sqlite;
+  cachedDb = db;
+  cachedPath = dbPath;
+}
+
+function verifyDirectoryPermissions(dir: string): void {
+  if (process.platform === 'win32') {
+    return;
+  }
+  const mode = fs.statSync(dir).mode & 0o777;
+  if ((mode & 0o077) !== 0) {
+    throw new Error('Database directory permissions are too permissive.');
+  }
+}
+
 function ensureDirectory(dbPath: string): void {
   if (dbPath === ':memory:') {
     return;
   }
   const dir = path.dirname(dbPath);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (process.platform !== 'win32') {
+    fs.chmodSync(dir, 0o700);
+    verifyDirectoryPermissions(dir);
+  }
 }
 
 function createDbFileIfMissing(dbPath: string): boolean {
@@ -22,7 +46,7 @@ function createDbFileIfMissing(dbPath: string): boolean {
     return false;
   }
   try {
-    const fd = fs.openSync(dbPath, 'wx', 0o600);
+    const fd = fs.openSync(dbPath, 'wx', 0o600); // Atomic create avoids TOCTOU races.
     fs.closeSync(fd);
     return true;
   } catch (error) {
@@ -59,9 +83,7 @@ export function openPmSqlite(dbPath: string = getPmDbPath()): Database.Database 
     throw error;
   }
 
-  cachedSqlite = sqlite;
-  cachedDb = null;
-  cachedPath = dbPath;
+  updateCache(dbPath, sqlite, null);
   return sqlite;
 }
 
@@ -73,7 +95,7 @@ export function getPmDb(
   }
   const sqlite = openPmSqlite(dbPath);
   const db = drizzle(sqlite, { schema });
-  cachedDb = db;
+  updateCache(dbPath, sqlite, db);
   return db;
 }
 

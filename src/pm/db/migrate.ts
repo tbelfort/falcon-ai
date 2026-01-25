@@ -16,15 +16,24 @@ const repoMigrationsFolder = path.resolve(
 );
 
 function isValidMigrationsFolder(folder: string): boolean {
+  const journal = path.join(folder, 'meta', '_journal.json');
   try {
     const stat = fs.statSync(folder);
     if (!stat.isDirectory()) {
       return false;
     }
-    const journal = path.join(folder, 'meta', '_journal.json');
-    return fs.existsSync(journal);
-  } catch {
-    return false;
+    const fd = fs.openSync(journal, 'r');
+    try {
+      return fs.fstatSync(fd).isFile();
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'ENOENT' || err.code === 'ENOTDIR') {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -35,9 +44,7 @@ function resolveMigrationsFolder(): string {
   if (isValidMigrationsFolder(fallbackMigrationsFolder)) {
     return fallbackMigrationsFolder;
   }
-  throw new Error(
-    `Migrations folder not found. Checked ${repoMigrationsFolder} and ${fallbackMigrationsFolder}.`
-  );
+  throw new Error('Migrations folder not found.');
 }
 
 const migrationsFolder = resolveMigrationsFolder();

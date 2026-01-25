@@ -203,6 +203,8 @@ async function validateSubscription(type: 'claude' | 'openai'): Promise<boolean>
 
 Rationale: 0o700 on directories prevents other local users from listing agent worktrees, and 0o600 on files keeps tokens, configs, and DB metadata private to the current user.
 
+FALCON_HOME is rejected if it resolves into OS-managed directories (for example `/etc`, `/usr`, `/System`) to avoid accidental writes when environment variables are mis-set. Windows comparisons are case-insensitive and UNC paths are rejected to keep data on local disks.
+
 ```typescript
 async function ensureSecurePermissions() {
   const falconHome = getFalconHome();
@@ -229,6 +231,7 @@ async function ensureSecurePermissions() {
 // 1. File permissions (600)
 // 2. No remote access (localhost only)
 // 3. No sensitive credentials stored in DB
+// 4. Database file created atomically with fs.openSync(..., 'wx') to avoid TOCTOU
 
 // What IS stored:
 // - Issue data

@@ -52,6 +52,8 @@ Core project management functionality:
 - Connection is cached at module scope; call `closePmDb()` after tests and CLI runs.
 - Migrations load from `src/pm/db/migrations` in-repo with a fallback to `dist/pm/db/migrations`.
 - `DATABASE_URL` must be a `file:` URI (defaults to `~/.falcon/pm.db`).
+- `FALCON_HOME` is validated as absolute, traversal-free, and outside system directories; symlinks are resolved before checks.
+- Windows path checks are case-insensitive and reject UNC paths for local storage.
 - **REST API** (`src/pm/api/`): Express server for all CRUD and orchestration
 - **Dashboard** (`src/pm/dashboard/`): React frontend with Kanban, settings, PR review
 
