@@ -45,6 +45,10 @@
     "./config": {
       "import": "./dist/config/loader.js",
       "types": "./dist/config/loader.d.ts"
+    },
+    "./pm-contracts": {
+      "import": "./dist/pm/contracts/index.js",
+      "types": "./dist/pm/contracts/index.d.ts"
     }
   },
   "bin": {
@@ -56,6 +60,8 @@
   ],
   "scripts": {
     "build": "tsc",
+    "pm:db:migrate": "npm run build && node dist/pm/db/cli.js migrate",
+    "pm:db:seed": "npm run build && node dist/pm/db/cli.js seed",
     "postinstall": "test -f ./dist/cli/postinstall.js && node ./dist/cli/postinstall.js || true",
     "test": "vitest",
     "test:run": "vitest run",
@@ -69,12 +75,14 @@
     "@anthropic-ai/sdk": "^0.30.0",
     "better-sqlite3": "^11.0.0",
     "commander": "^14.0.0",
+    "drizzle-orm": "^0.38.0",
     "yaml": "^2.8.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.29.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   },
