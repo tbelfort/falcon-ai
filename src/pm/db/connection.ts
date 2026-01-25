@@ -5,6 +5,19 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './schema.js';
 import { getPmDbPath } from './paths.js';
 
+/**
+ * Single global connection cache.
+ *
+ * Rationale: better-sqlite3 is fully synchronous and Node.js is single-threaded,
+ * so there's no concurrency between cache check and update. A single cached
+ * connection is sufficient for CLI tools and single-process servers. The cache
+ * is keyed by path to handle tests that use different temp databases.
+ *
+ * Constraints:
+ * - Call closePmDb() after CLI commands and in test teardown
+ * - If multi-process access is needed, each process gets its own connection
+ * - WAL mode allows concurrent readers across processes
+ */
 let cachedSqlite: Database.Database | null = null;
 let cachedDb: BetterSQLite3Database<typeof schema> | null = null;
 let cachedPath: string | null = null;
