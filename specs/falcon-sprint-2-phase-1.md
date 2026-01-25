@@ -280,6 +280,7 @@ Issues:
 - `POST /api/issues`
 - `GET /api/issues/:id`
 - `PATCH /api/issues/:id` (supports `labelIds` in body)
+- `DELETE /api/issues/:id`
 - `POST /api/issues/:id/start` (human action: select preset)
 - `POST /api/issues/:id/transition` (validate via `canTransition()` from `src/pm/core/stage-machine.ts`, then persist)
 

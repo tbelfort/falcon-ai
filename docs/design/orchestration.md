@@ -67,6 +67,10 @@ The orchestration engine manages issue progression through workflow stages, assi
 | `MERGE_READY` | Ready to merge (or has conflicts) | No | Maybe |
 | `DONE` | Merged and complete | No | No |
 
+### Start Issue Preconditions
+
+The start action is only valid when both the status and stage are in their initial states: `status in {backlog, todo}` and `stage in {BACKLOG, TODO}`.
+
 ## Stage Progression Logic
 
 ### Transition Rules

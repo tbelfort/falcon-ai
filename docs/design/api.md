@@ -16,6 +16,10 @@ For local development, authentication is minimal. The API accepts:
 - `X-Agent-ID` header for agent-facing endpoints
 - Future: JWT tokens for multi-user support
 
+No authentication or rate limiting is enforced by default; the API is intended for localhost use only.
+
+CORS is open by default for local dev. To restrict origins, set `FALCON_PM_CORS_ORIGINS` to a comma-separated list of allowed origins.
+
 ## Response Format
 
 All responses follow this structure:
@@ -40,6 +44,14 @@ All responses follow this structure:
   }
 }
 ```
+
+## Pagination
+
+List endpoints accept `page` and `perPage` query parameters. Defaults are `page=1` and `perPage=50` with a maximum of `perPage=100`. Responses include `meta.total`, `meta.page`, and `meta.perPage`.
+
+## Timestamps
+
+All timestamp fields (`createdAt`, `updatedAt`, `startedAt`, `completedAt`, WS `at`) are Unix seconds (UTC).
 
 ## Error Codes
 
@@ -76,8 +88,8 @@ GET /api/projects
       "description": "...",
       "repoUrl": "https://github.com/...",
       "defaultBranch": "main",
-      "createdAt": "2024-01-20T...",
-      "updatedAt": "2024-01-20T...",
+      "createdAt": 1705766400,
+      "updatedAt": 1705766400,
       "_counts": {
         "issues": 42,
         "agents": 3
@@ -167,8 +179,8 @@ GET /api/projects/:projectId/issues
         "hasContextPack": true,
         "hasSpec": true
       },
-      "createdAt": "2024-01-20T...",
-      "updatedAt": "2024-01-20T..."
+      "createdAt": 1705766400,
+      "updatedAt": 1705766400
     }
   ],
   "meta": {
@@ -333,7 +345,7 @@ GET /api/projects/:projectId/agents
       "workDir": "~/.falcon/projects/my-project/agents/opus-1",
       "stats": {
         "totalTasksCompleted": 15,
-        "lastActiveAt": "2024-01-20T..."
+        "lastActiveAt": 1705766400
       }
     }
   ]
@@ -384,7 +396,7 @@ GET /api/agents/:id/status
     "currentIssue": { ... },
     "currentStage": "IMPLEMENT",
     "sessionId": "claude-session-123",
-    "startedAt": "2024-01-20T..."
+    "startedAt": 1705766400
   }
 }
 ```
@@ -739,8 +751,8 @@ GET /api/runs/:id
     "agentId": "uuid",
     "stage": "IMPLEMENT",
     "status": "completed",
-    "startedAt": "2024-01-20T...",
-    "completedAt": "2024-01-20T...",
+    "startedAt": 1705766400,
+    "completedAt": 1705766400,
     "resultSummary": "Implementation complete",
     "metrics": {
       "durationMs": 45000,
@@ -780,9 +792,11 @@ ws://localhost:3002/ws?token=<auth-token>
 ```
 
 **Channels:**
-- `project:<slug>` - Project-wide events
+- `project:<id>` - Project-wide events
 - `issue:<id>` - Issue updates
 - `agent:<name>` - Agent status and output
+
+Issue-scoped events are broadcast to both `project:<projectId>` and `issue:<issueId>`. Subscribe to the project channel for dashboards and to the issue channel for detail views.
 
 **Events:**
 - `issue_created`, `issue_updated`, `issue_deleted`
@@ -810,7 +824,7 @@ Handles:
 
 ## Validation
 
-All request bodies are validated using Zod schemas:
+Request bodies are validated using Zod schemas in route handlers. Path and query parameters use lightweight manual checks (trimmed strings) until they are moved into shared schema validation.
 
 ```typescript
 // Example: Create Issue
