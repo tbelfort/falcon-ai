@@ -14,15 +14,23 @@ async function enableMocking() {
   });
 }
 
-enableMocking().then(() => {
-  const container = document.getElementById('root');
-  if (!container) {
-    return;
-  }
+enableMocking()
+  .then(() => {
+    const container = document.getElementById('root');
+    if (!container) {
+      return;
+    }
 
-  createRoot(container).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
-});
+    createRoot(container).render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>,
+    );
+  })
+  .catch((error) => {
+    console.error('Failed to initialize application:', error);
+    const container = document.getElementById('root');
+    if (container) {
+      container.textContent = 'Failed to load application. Please refresh the page.';
+    }
+  });

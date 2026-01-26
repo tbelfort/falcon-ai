@@ -446,3 +446,67 @@ onMessage((data) => {
 - Focus indicators on all interactive elements
 - ARIA labels for status badges
 - Screen reader announcements for real-time updates
+
+## Error Handling Patterns
+
+The dashboard uses two error handling approaches based on context:
+
+### Callback-Based Errors (User-Facing Operations)
+For operations where the user needs to see feedback (e.g., stage transitions), errors are passed via callback:
+
+```typescript
+moveIssueStage(issueId, stage, (errorMessage) => {
+  showErrorBanner(errorMessage);
+});
+```
+
+This allows the UI to display error banners that the user can dismiss.
+
+### Console Errors (Background Operations)
+For auxiliary operations that shouldn't interrupt the user (e.g., label updates), errors are logged:
+
+```typescript
+try {
+  await updateLabels(issueId, labelIds);
+} catch (error) {
+  console.error(error);
+}
+```
+
+## Issue List Refresh Strategy
+
+When issues change, the dashboard uses a **full reload** strategy:
+
+1. When a project is selected, all issues are fetched via `GET /api/issues?projectId=X`
+2. WebSocket events trigger issue updates in the store via `replaceIssue()`
+3. Optimistic updates are applied immediately, then reconciled with server response
+4. On error, optimistic updates are rolled back to the original state
+
+This approach was chosen over granular updates for simplicity and to avoid stale data issues.
+
+## Kanban Column Order (STAGE_ORDER)
+
+Columns are displayed in a fixed order defined in `utils/stages.ts`:
+
+```typescript
+const STAGE_ORDER: IssueStage[] = [
+  'BACKLOG',
+  'TODO',
+  'CONTEXT_PACK',
+  'CONTEXT_REVIEW',
+  'SPEC',
+  'SPEC_REVIEW',
+  'IMPLEMENT',
+  'PR_REVIEW',
+  'PR_HUMAN_REVIEW',
+  'FIXER',
+  'TESTING',
+  'DOC_REVIEW',
+  'MERGE_READY',
+  'DONE',
+];
+```
+
+Each stage has associated styling (background and text colors) defined in `getStageTone()`.
+
+The Kanban board filters visible columns based on user preferences, but maintains this ordering.

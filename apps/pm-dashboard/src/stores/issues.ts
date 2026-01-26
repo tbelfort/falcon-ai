@@ -153,17 +153,40 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       return;
     }
 
-    const optimistic = current.data.map((issue) =>
-      issue.id === issueId ? { ...issue, stage: toStage } : issue,
-    );
-    set({ issues: successState(optimistic) });
+    const originalStage = existing.stage;
+
+    // Optimistic update
+    set((state) => {
+      if (state.issues.status !== 'success') return state;
+      return {
+        issues: successState(
+          state.issues.data.map((issue) =>
+            issue.id === issueId ? { ...issue, stage: toStage } : issue,
+          ),
+        ),
+      };
+    });
 
     try {
       const updated = await transitionIssue(issueId, toStage);
-      set({ issues: successState(updateIssueList(optimistic, updated)) });
+      // Re-read current state to avoid stale closure issues
+      set((state) => {
+        if (state.issues.status !== 'success') return state;
+        return { issues: successState(updateIssueList(state.issues.data, updated)) };
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Stage transition failed';
-      set({ issues: successState(current.data) });
+      // Rollback: re-read current state and revert only this issue's stage
+      set((state) => {
+        if (state.issues.status !== 'success') return state;
+        return {
+          issues: successState(
+            state.issues.data.map((issue) =>
+              issue.id === issueId ? { ...issue, stage: originalStage } : issue,
+            ),
+          ),
+        };
+      });
       onError(message);
     }
   },

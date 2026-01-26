@@ -25,6 +25,19 @@ export class ApiRequestError extends Error {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 async function parseResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let errorPayload: ApiError | undefined;
+    try {
+      errorPayload = (await response.json()) as ApiError;
+    } catch {
+      throw new ApiRequestError(`HTTP ${response.status}`, 'http_error', undefined, response.status);
+    }
+    if (errorPayload && 'error' in errorPayload) {
+      throw new ApiRequestError(errorPayload.error.message, errorPayload.error.code, errorPayload.error.details, response.status);
+    }
+    throw new ApiRequestError(`HTTP ${response.status}`, 'http_error', undefined, response.status);
+  }
+
   let payload: ApiResponse<T> | undefined;
 
   try {
@@ -41,6 +54,8 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload.data;
 }
 
+const DEFAULT_TIMEOUT_MS = 30000;
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { signal, ...rest } = options;
   const resolvedOptions: RequestInit = {
@@ -51,8 +66,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...rest,
   };
 
-  if (signal && !import.meta.env.VITEST) {
-    resolvedOptions.signal = signal;
+  if (!import.meta.env.VITEST) {
+    // Use provided signal or create a timeout signal
+    if (signal) {
+      resolvedOptions.signal = signal;
+    } else if (typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal) {
+      resolvedOptions.signal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
+    }
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, resolvedOptions);

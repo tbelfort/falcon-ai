@@ -775,6 +775,25 @@ GET /api/runs/:id
 ws://localhost:3002/ws?token=<auth-token>
 ```
 
+### Connection Keepalive
+
+The client sends a ping message every 30 seconds to keep the connection alive:
+
+```json
+{ "type": "ping" }
+```
+
+The server responds with a pong message. If the connection is lost, the client should implement exponential backoff reconnection (starting at 1 second, capping at 30 seconds).
+
+### Client-Side URL Derivation
+
+When `VITE_API_BASE_URL` is set, the WebSocket URL is derived by:
+1. Taking the base URL (e.g., `http://localhost:3002`)
+2. Replacing the protocol: `http://` → `ws://`, `https://` → `wss://`
+3. Appending `/ws` path
+
+When `VITE_API_BASE_URL` is not set (MSW mocked mode), WebSocket connections are disabled.
+
 ### Subscribe/Unsubscribe
 
 ```json

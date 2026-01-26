@@ -7,9 +7,11 @@ import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
 import { LIMITS, parsePagination } from '../validation.js';
 
+const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{3,8}$/;
+
 const createLabelSchema = z.object({
   name: z.string().min(1).max(LIMITS.name),
-  color: z.string().min(1).max(LIMITS.color).optional(),
+  color: z.string().min(1).max(LIMITS.color).regex(HEX_COLOR_REGEX, 'Invalid hex color format').optional(),
   description: z.string().min(1).max(LIMITS.description).nullable().optional(),
   isBuiltin: z.boolean().optional(),
 });

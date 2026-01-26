@@ -55,7 +55,7 @@ Core project management functionality:
 - `FALCON_HOME` is validated as absolute, traversal-free, and outside system directories; symlinks are resolved before checks.
 - Windows path checks are case-insensitive and reject UNC paths for local storage.
 - **REST API** (`src/pm/api/`): Express server for all CRUD and orchestration
-- **Dashboard** (`src/pm/dashboard/`): React frontend with Kanban, settings, PR review
+- **Dashboard** (`apps/pm-dashboard/`): React frontend with Kanban, settings, PR review (standalone Vite app)
 
 ### falcon-orchestrator
 
@@ -120,36 +120,37 @@ src/pm/
 │   ├── presets.ts          # Model presets
 │   ├── branch-namer.ts     # Haiku branch names
 │   └── runner.ts           # Main orchestration loop
-├── github/
-│   ├── client.ts           # Octokit wrapper
-│   ├── pr-creator.ts
-│   ├── comment-poster.ts
-│   └── merger.ts
-└── dashboard/
-    ├── App.tsx             # Main React app
-    ├── index.tsx           # Entry point
-    ├── components/
-    │   ├── KanbanBoard.tsx
-    │   ├── IssueCard.tsx
-    │   ├── IssueDetail.tsx
-    │   ├── AgentBadge.tsx
-    │   ├── ModelSelector.tsx
-    │   ├── DebugOutput.tsx
-    │   └── FindingCard.tsx
-    ├── pages/
-    │   ├── Dashboard.tsx
-    │   ├── KanbanView.tsx
-    │   ├── ActiveAgents.tsx
-    │   ├── PRReview.tsx
-    │   └── Settings.tsx
-    ├── stores/
-    │   ├── issueStore.ts   # Zustand
-    │   ├── agentStore.ts
-    │   └── projectStore.ts
-    ├── hooks/
-    │   └── useWebSocket.ts
-    └── api/
-        └── client.ts       # API client
+└── github/
+    ├── client.ts           # Octokit wrapper
+    ├── pr-creator.ts
+    ├── comment-poster.ts
+    └── merger.ts
+
+apps/pm-dashboard/           # Standalone Vite React app
+├── src/
+│   ├── App.tsx              # Main React app
+│   ├── main.tsx             # Entry point
+│   ├── components/
+│   │   ├── KanbanBoard.tsx
+│   │   ├── IssueCard.tsx
+│   │   ├── IssueColumn.tsx
+│   │   ├── IssueDetailModal.tsx
+│   │   └── StageBadge.tsx
+│   ├── stores/
+│   │   ├── issues.ts        # Zustand issue store
+│   │   ├── projects.ts      # Zustand project store
+│   │   ├── ui.ts            # UI state store
+│   │   └── types.ts         # AsyncState types
+│   ├── hooks/
+│   │   └── useWebSocket.ts
+│   ├── api/
+│   │   ├── client.ts        # API client
+│   │   └── types.ts         # DTO types
+│   ├── utils/
+│   │   └── stages.ts        # Stage order and styling
+│   └── mocks/               # MSW mocks for testing
+├── vite.config.ts
+└── vitest.config.ts
 ```
 
 ### Data Directory (`~/.falcon/`)
