@@ -449,29 +449,43 @@ onMessage((data) => {
 
 ## Error Handling Patterns
 
-The dashboard uses two error handling approaches based on context:
+The dashboard uses callback-based error handling for user-facing operations:
 
 ### Callback-Based Errors (User-Facing Operations)
-For operations where the user needs to see feedback (e.g., stage transitions), errors are passed via callback:
+For operations where the user needs to see feedback, errors are passed via callback:
 
 ```typescript
+// Stage transitions
 moveIssueStage(issueId, stage, (errorMessage) => {
+  showErrorBanner(errorMessage);
+});
+
+// Label updates (also user-facing)
+updateLabels(issueId, labelIds, (errorMessage) => {
   showErrorBanner(errorMessage);
 });
 ```
 
 This allows the UI to display error banners that the user can dismiss.
 
-### Console Errors (Background Operations)
-For auxiliary operations that shouldn't interrupt the user (e.g., label updates), errors are logged:
+**Note:** Label updates ARE user-facing operations and should use error callbacks when possible. If no callback is provided, errors are logged to console as a fallback.
+
+### Error Message Fallback Convention
+
+When extracting error messages from caught errors, use this pattern:
 
 ```typescript
-try {
-  await updateLabels(issueId, labelIds);
-} catch (error) {
-  console.error(error);
-}
+const message = error instanceof Error ? error.message : 'Operation failed';
 ```
+
+This ensures a user-friendly message is always available even for non-Error exceptions.
+
+### API Request Timeout
+
+All API requests have a 30-second timeout. When a request times out:
+- The fetch is aborted via `AbortSignal.timeout(30000)`
+- An `AbortError` is thrown
+- The UI should display an appropriate error message (e.g., "Request timed out")
 
 ## Issue List Refresh Strategy
 

@@ -141,10 +141,11 @@ DELETE /api/projects/:id
 ### List Issues
 
 ```
-GET /api/projects/:projectId/issues
+GET /api/issues?projectId=<id>
 ```
 
 **Query Parameters:**
+- `projectId` (string, required): Filter by project ID
 - `status` (string[]): Filter by status (backlog, todo, in_progress, done)
 - `stage` (string): Filter by stage
 - `label` (string[]): Filter by label names
@@ -772,8 +773,10 @@ GET /api/runs/:id
 ### Connection
 
 ```
-ws://localhost:3002/ws?token=<auth-token>
+ws://localhost:3002/ws
 ```
+
+**Note on authentication:** The token query parameter (`?token=<auth-token>`) is reserved for future production deployments. In localhost development mode, WebSocket connections are accepted without authentication. Production deployments should implement token validation on the connection upgrade.
 
 ### Connection Keepalive
 
@@ -838,6 +841,14 @@ Handles:
 - `pull_request` events (opened, closed, merged)
 - `check_run` events
 - `issue_comment` events
+
+---
+
+## Client Request Timeout
+
+The dashboard API client enforces a 30-second timeout on all fetch requests. This prevents the UI from hanging indefinitely if the server is slow or unreachable. The timeout is implemented using `AbortSignal.timeout(30000)` in the request wrapper.
+
+When a request times out, the client throws an `AbortError` which should be handled by the calling code.
 
 ---
 

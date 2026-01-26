@@ -118,7 +118,9 @@ describe('useIssuesStore', () => {
       const state = useIssuesStore.getState();
       expect(state.issues.status).toBe('success');
       if (state.issues.status === 'success') {
-        expect(state.issues.data.length).toBeGreaterThan(0);
+        expect(state.issues.data).toHaveLength(8);
+        expect(state.issues.data[0].title).toBe('Bootstrap PM dashboard shell');
+        expect(state.issues.data[0].stage).toBe('BACKLOG');
       }
     });
 
@@ -175,7 +177,9 @@ describe('useIssuesStore', () => {
       const labels = state.labelsByProjectId['proj-falcon'];
       expect(labels?.status).toBe('success');
       if (labels?.status === 'success') {
-        expect(labels.data.length).toBeGreaterThan(0);
+        expect(labels.data).toHaveLength(5);
+        expect(labels.data[0].name).toBe('UX');
+        expect(labels.data[0].color).toBe('#c96b3c');
       }
     });
 
@@ -256,6 +260,131 @@ describe('useIssuesStore', () => {
         expect(comments.data[0].content).toBe('First comment');
       }
     });
+
+    it('calls onError callback when API fails', async () => {
+      server.use(
+        http.post('/api/issues/:id/comments', () =>
+          HttpResponse.json(
+            { error: { code: 'server_error', message: 'Failed to create comment' } },
+            { status: 500 },
+          ),
+        ),
+      );
+
+      const onError = vi.fn();
+
+      await act(async () => {
+        await useIssuesStore.getState().addComment('issue-102', 'Test comment', undefined, onError);
+      });
+
+      expect(onError).toHaveBeenCalledWith('Failed to create comment');
+    });
+
+    it('logs to console when API fails and no onError provided', async () => {
+      server.use(
+        http.post('/api/issues/:id/comments', () =>
+          HttpResponse.json(
+            { error: { code: 'server_error', message: 'Server error' } },
+            { status: 500 },
+          ),
+        ),
+      );
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await act(async () => {
+        await useIssuesStore.getState().addComment('issue-102', 'Test comment');
+      });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Server error');
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('updateLabels', () => {
+    it('updates labels for an issue', async () => {
+      // First load issues
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      server.use(
+        http.patch('/api/issues/:id', () =>
+          HttpResponse.json({
+            data: {
+              id: 'issue-101',
+              projectId: 'proj-falcon',
+              number: 101,
+              title: 'Bootstrap PM dashboard shell',
+              description: 'Create the initial app shell.',
+              stage: 'BACKLOG',
+              assignedAgentId: null,
+              labels: [{ id: 'label-ws', projectId: 'proj-falcon', name: 'Realtime', color: '#2b4a66' }],
+            },
+          }),
+        ),
+      );
+
+      await act(async () => {
+        await useIssuesStore.getState().updateLabels('issue-101', ['label-ws']);
+      });
+
+      const state = useIssuesStore.getState();
+      if (state.issues.status === 'success') {
+        const issue = state.issues.data.find((i) => i.id === 'issue-101');
+        expect(issue?.labels).toHaveLength(1);
+        expect(issue?.labels[0].name).toBe('Realtime');
+      }
+    });
+
+    it('calls onError callback when API fails', async () => {
+      // First load issues
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      server.use(
+        http.patch('/api/issues/:id', () =>
+          HttpResponse.json(
+            { error: { code: 'server_error', message: 'Failed to update labels' } },
+            { status: 500 },
+          ),
+        ),
+      );
+
+      const onError = vi.fn();
+
+      await act(async () => {
+        await useIssuesStore.getState().updateLabels('issue-101', ['label-ws'], onError);
+      });
+
+      expect(onError).toHaveBeenCalledWith('Failed to update labels');
+    });
+
+    it('logs to console when API fails and no onError provided', async () => {
+      // First load issues
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      server.use(
+        http.patch('/api/issues/:id', () =>
+          HttpResponse.json(
+            { error: { code: 'server_error', message: 'Label update error' } },
+            { status: 500 },
+          ),
+        ),
+      );
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await act(async () => {
+        await useIssuesStore.getState().updateLabels('issue-101', ['label-ws']);
+      });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Label update error');
+      consoleSpy.mockRestore();
+    });
   });
 
   describe('loadComments', () => {
@@ -268,7 +397,9 @@ describe('useIssuesStore', () => {
       const comments = state.commentsByIssueId['issue-102'];
       expect(comments?.status).toBe('success');
       if (comments?.status === 'success') {
-        expect(comments.data.length).toBeGreaterThan(0);
+        expect(comments.data).toHaveLength(1);
+        expect(comments.data[0].content).toBe('Drag target zones should highlight when active.');
+        expect(comments.data[0].authorName).toBe('Morgan');
       }
     });
 

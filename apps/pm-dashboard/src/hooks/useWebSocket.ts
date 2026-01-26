@@ -5,18 +5,21 @@ type WebSocketOptions = {
   url: string | null;
   onEvent: (message: WsServerMessage) => void;
   subscriptions?: string[];
+  /** Set to true to enable WebSocket in test environment. Default: disabled in VITEST. */
+  enableInTest?: boolean;
 };
 
-const INITIAL_RECONNECT_DELAY_MS = 1000;
-const MAX_RECONNECT_DELAY_MS = 30000;
-const PING_INTERVAL_MS = 30000;
+export const INITIAL_RECONNECT_DELAY_MS = 1000;
+export const MAX_RECONNECT_DELAY_MS = 30000;
+export const PING_INTERVAL_MS = 30000;
 
-export function useWebSocket({ url, onEvent, subscriptions = [] }: WebSocketOptions) {
+export function useWebSocket({ url, onEvent, subscriptions = [], enableInTest = false }: WebSocketOptions) {
   const latestHandler = useRef(onEvent);
   latestHandler.current = onEvent;
 
   useEffect(() => {
-    if (import.meta.env.VITEST) {
+    // Skip WebSocket in test environment unless explicitly enabled
+    if (import.meta.env.VITEST && !enableInTest) {
       return;
     }
     if (!url) {

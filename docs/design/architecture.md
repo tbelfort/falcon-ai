@@ -405,3 +405,64 @@ workflowDefaults:
 - **Multiple agents**: Support for N claude + M openai concurrent agents
 - **SQLite sufficient**: Expected issue volumes < 10,000 per project
 - **WebSocket**: Direct connections, no Redis needed for single server
+
+## Implementation Patterns
+
+### Abort-on-New-Request Pattern
+
+When loading data (projects, issues, labels), the stores implement an abort-on-new-request pattern to prevent race conditions:
+
+```typescript
+const loadIssues = async (projectId) => {
+  // Abort any in-flight request
+  const { abortController: current } = get();
+  if (current) {
+    current.abort();
+  }
+
+  // Create new controller for this request
+  const controller = new AbortController();
+  set({ abortController: controller });
+
+  try {
+    const data = await fetchData(controller.signal);
+    set({ data, abortController: null });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      return; // Ignore aborted requests
+    }
+    // Handle actual errors
+  }
+};
+```
+
+This ensures that rapid successive calls (e.g., switching projects quickly) don't result in stale data being displayed.
+
+### VITEST Environment Detection
+
+The codebase uses `import.meta.env.VITEST` to detect when code is running in the Vitest test environment. This is used to:
+
+1. **Disable WebSocket connections** in tests (unless explicitly enabled via `enableInTest` option)
+2. **Skip browser-only timeout features** that aren't available in the test environment
+
+Example:
+```typescript
+if (import.meta.env.VITEST && !enableInTest) {
+  return; // Skip WebSocket in tests
+}
+```
+
+This pattern allows tests to run without WebSocket infrastructure while still allowing targeted WebSocket testing when needed.
+
+### Dashboard Default Behaviors
+
+The pm-dashboard has several configurable defaults:
+
+| Setting | Default Value | Description |
+|---------|---------------|-------------|
+| HTTP Timeout | 30000ms | API requests timeout after 30 seconds |
+| MSW Mode | Auto-activated | When `VITE_API_BASE_URL` is unset, MSW mocks are enabled |
+| Project Selection | Auto-select first | On load, automatically selects the first project in the list |
+| WebSocket URL | Derived from API base | Protocol swapped (http→ws, https→wss), `/ws` appended |
+
+**MSW Mocked Mode:** When `VITE_API_BASE_URL` is not set (or empty), the dashboard activates MSW (Mock Service Worker) to provide mock API responses. This enables frontend development without a running backend. WebSocket connections are disabled in this mode.

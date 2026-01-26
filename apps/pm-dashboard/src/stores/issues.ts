@@ -20,9 +20,9 @@ type IssuesState = {
   loadIssues: (projectId: string) => Promise<void>;
   loadLabels: (projectId: string) => Promise<void>;
   loadComments: (issueId: string) => Promise<void>;
-  addComment: (issueId: string, content: string, authorName?: string) => Promise<void>;
+  addComment: (issueId: string, content: string, authorName?: string, onError?: (message: string) => void) => Promise<void>;
   moveIssueStage: (issueId: string, toStage: IssueStage, onError: (message: string) => void) => Promise<void>;
-  updateLabels: (issueId: string, labelIds: string[]) => Promise<void>;
+  updateLabels: (issueId: string, labelIds: string[], onError?: (message: string) => void) => Promise<void>;
   replaceIssue: (issue: IssueDto) => void;
   reset: () => void;
 };
@@ -121,26 +121,35 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       }));
     }
   },
-  addComment: async (issueId, content, authorName) => {
-    const newComment = await createComment(issueId, content, authorName);
-    set((state) => {
-      const existing = state.commentsByIssueId[issueId];
-      if (!existing || existing.status !== 'success') {
+  addComment: async (issueId, content, authorName, onError) => {
+    try {
+      const newComment = await createComment(issueId, content, authorName);
+      set((state) => {
+        const existing = state.commentsByIssueId[issueId];
+        if (!existing || existing.status !== 'success') {
+          return {
+            commentsByIssueId: {
+              ...state.commentsByIssueId,
+              [issueId]: successState([newComment]),
+            },
+          };
+        }
+
         return {
           commentsByIssueId: {
             ...state.commentsByIssueId,
-            [issueId]: successState([newComment]),
+            [issueId]: successState([...existing.data, newComment]),
           },
         };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to add comment';
+      if (onError) {
+        onError(message);
+      } else {
+        console.error(message);
       }
-
-      return {
-        commentsByIssueId: {
-          ...state.commentsByIssueId,
-          [issueId]: successState([...existing.data, newComment]),
-        },
-      };
-    });
+    }
   },
   moveIssueStage: async (issueId, toStage, onError) => {
     const current = get().issues;
@@ -176,9 +185,15 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Stage transition failed';
-      // Rollback: re-read current state and revert only this issue's stage
+      // Rollback: re-read current state and revert only if the current stage is still our optimistic target.
+      // If a WS event updated the issue to a different stage, keep that (WS is more authoritative).
       set((state) => {
         if (state.issues.status !== 'success') return state;
+        const currentIssue = state.issues.data.find((issue) => issue.id === issueId);
+        // If WS updated the stage to something other than our target, keep the WS state
+        if (currentIssue?.stage !== toStage) {
+          return state;
+        }
         return {
           issues: successState(
             state.issues.data.map((issue) =>
@@ -190,7 +205,7 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       onError(message);
     }
   },
-  updateLabels: async (issueId, labelIds) => {
+  updateLabels: async (issueId, labelIds, onError) => {
     const current = get().issues;
     if (current.status !== 'success') {
       return;
@@ -198,9 +213,18 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
 
     try {
       const updated = await updateIssueLabels(issueId, labelIds);
-      set({ issues: successState(updateIssueList(current.data, updated)) });
+      // Re-read current state to avoid stale closure issues
+      set((state) => {
+        if (state.issues.status !== 'success') return state;
+        return { issues: successState(updateIssueList(state.issues.data, updated)) };
+      });
     } catch (error) {
-      console.error(error);
+      const message = error instanceof Error ? error.message : 'Label update failed';
+      if (onError) {
+        onError(message);
+      } else {
+        console.error(message);
+      }
     }
   },
   replaceIssue: (issue) => {

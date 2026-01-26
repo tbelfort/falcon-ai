@@ -33,7 +33,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
       throw new ApiRequestError(`HTTP ${response.status}`, 'http_error', undefined, response.status);
     }
     if (errorPayload && 'error' in errorPayload) {
-      throw new ApiRequestError(errorPayload.error.message, errorPayload.error.code, errorPayload.error.details, response.status);
+      throw new ApiRequestError(errorPayload.error?.message ?? 'Unknown error', errorPayload.error?.code ?? 'unknown', errorPayload.error?.details, response.status);
     }
     throw new ApiRequestError(`HTTP ${response.status}`, 'http_error', undefined, response.status);
   }
@@ -47,8 +47,8 @@ async function parseResponse<T>(response: Response): Promise<T> {
   }
 
   if ('error' in payload) {
-    const apiError = payload.error as ApiError['error'];
-    throw new ApiRequestError(apiError.message, apiError.code, apiError.details, response.status);
+    const apiError = payload.error as ApiError['error'] | undefined;
+    throw new ApiRequestError(apiError?.message ?? 'Unknown error', apiError?.code ?? 'unknown', apiError?.details, response.status);
   }
 
   return payload.data;

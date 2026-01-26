@@ -34,7 +34,15 @@ export function createApiServer(options: ApiServerOptions) {
   const broadcaster = options.broadcaster ?? (() => undefined);
 
   app.use(cors({ origin: resolveCorsOrigins() }));
-  app.use(express.json());
+  app.use(express.json({ limit: '100kb' }));
+
+  // Security headers
+  app.use((_req, res, next) => {
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'");
+    next();
+  });
 
   app.use('/api/projects', createProjectsRouter(services, broadcaster));
   app.use('/api/issues', createIssuesRouter(services, broadcaster));
