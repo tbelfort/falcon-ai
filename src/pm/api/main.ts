@@ -11,6 +11,6 @@ const app = createApiServer({
 const server = createServer(app);
 setupWebSocket(server);
 
-server.listen(3002, () => {
+server.listen(3002, '127.0.0.1', () => {
   console.log('Falcon PM API listening on http://localhost:3002');
 });

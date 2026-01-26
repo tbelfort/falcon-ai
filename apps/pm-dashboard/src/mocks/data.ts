@@ -105,7 +105,7 @@ const seedComments: Record<string, CommentDto[]> = {
       content: 'Drag target zones should highlight when active.',
       authorType: 'human',
       authorName: 'Morgan',
-      createdAt: Date.now() - 1000 * 60 * 60 * 3,
+      createdAt: Math.floor(Date.now() / 1000) - 60 * 60 * 3,
     },
   ],
   'issue-105': [
@@ -115,7 +115,7 @@ const seedComments: Record<string, CommentDto[]> = {
       content: 'Checklist should mirror the spec sections in order.',
       authorType: 'agent',
       authorName: 'Falcon Agent',
-      createdAt: Date.now() - 1000 * 60 * 45,
+      createdAt: Math.floor(Date.now() / 1000) - 60 * 45,
     },
   ],
 };
@@ -163,7 +163,7 @@ export function addComment(issueId: string, content: string, authorName?: string
     content,
     authorType: authorName ? 'human' : 'agent',
     authorName: authorName ?? 'Falcon Agent',
-    createdAt: Date.now(),
+    createdAt: Math.floor(Date.now() / 1000),
   };
   comments[issueId] = [...(comments[issueId] ?? []), comment];
   return comment;

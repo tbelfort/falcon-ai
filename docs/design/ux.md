@@ -524,3 +524,34 @@ const STAGE_ORDER: IssueStage[] = [
 Each stage has associated styling (background and text colors) defined in `getStageTone()`.
 
 The Kanban board filters visible columns based on user preferences, but maintains this ordering.
+
+## WebSocket Reconnection Strategy
+
+When the WebSocket connection drops and reconnects, the dashboard follows a **trust cache, no refetch** strategy:
+
+### Behavior on Reconnect
+
+1. **No automatic data refetch** — The dashboard does not automatically reload issues, projects, or comments when WebSocket reconnects
+2. **Cache remains authoritative** — Data loaded in Zustand stores is trusted until the user explicitly triggers a refresh (e.g., selecting a different project)
+3. **Missed events are not recovered** — Events that occurred during the disconnection window are lost
+
+### Rationale
+
+This approach was chosen because:
+- **Simplicity** — Avoids complex event replay or delta-sync logic
+- **Predictability** — Users can manually refresh if they suspect stale data
+- **Performance** — Prevents unnecessary API load on flaky connections
+
+### Reconnection Timing
+
+The WebSocket uses exponential backoff for reconnection attempts:
+- Initial delay: 1 second
+- Maximum delay: 30 seconds
+- Backoff multiplier: 2x per failed attempt
+
+### When Data May Be Stale
+
+Users should manually refresh (by re-selecting the project or reloading the page) if:
+- The connection was lost for an extended period
+- They notice unexpected issue states
+- The WebSocket indicator shows recent reconnection

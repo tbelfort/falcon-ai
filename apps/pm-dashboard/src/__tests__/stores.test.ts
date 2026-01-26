@@ -426,6 +426,84 @@ describe('useIssuesStore', () => {
     });
   });
 
+  describe('replaceIssue', () => {
+    it('replaces an existing issue in the store', async () => {
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      const updatedIssue = {
+        id: 'issue-101',
+        projectId: 'proj-falcon',
+        number: 101,
+        title: 'Updated title',
+        description: 'Updated description',
+        stage: 'TODO' as const,
+        assignedAgentId: 'A-99',
+        labels: [],
+      };
+
+      useIssuesStore.getState().replaceIssue(updatedIssue);
+
+      const state = useIssuesStore.getState();
+      if (state.issues.status === 'success') {
+        const issue = state.issues.data.find((i) => i.id === 'issue-101');
+        expect(issue?.title).toBe('Updated title');
+        expect(issue?.description).toBe('Updated description');
+        expect(issue?.stage).toBe('TODO');
+        expect(issue?.assignedAgentId).toBe('A-99');
+      }
+    });
+
+    it('does nothing if issues are not loaded', () => {
+      const updatedIssue = {
+        id: 'issue-101',
+        projectId: 'proj-falcon',
+        number: 101,
+        title: 'Updated title',
+        description: 'Updated description',
+        stage: 'TODO' as const,
+        assignedAgentId: null,
+        labels: [],
+      };
+
+      useIssuesStore.getState().replaceIssue(updatedIssue);
+
+      const state = useIssuesStore.getState();
+      expect(state.issues.status).toBe('idle');
+    });
+
+    it('preserves other issues when replacing one', async () => {
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      const beforeState = useIssuesStore.getState();
+      const beforeCount = beforeState.issues.status === 'success' ? beforeState.issues.data.length : 0;
+
+      const updatedIssue = {
+        id: 'issue-101',
+        projectId: 'proj-falcon',
+        number: 101,
+        title: 'Updated title',
+        description: 'Updated description',
+        stage: 'IMPLEMENT' as const,
+        assignedAgentId: null,
+        labels: [],
+      };
+
+      useIssuesStore.getState().replaceIssue(updatedIssue);
+
+      const afterState = useIssuesStore.getState();
+      if (afterState.issues.status === 'success') {
+        expect(afterState.issues.data.length).toBe(beforeCount);
+        // Check that other issues are unchanged
+        const issue102 = afterState.issues.data.find((i) => i.id === 'issue-102');
+        expect(issue102?.title).toBe('Wire Kanban drag and drop');
+      }
+    });
+  });
+
   describe('reset', () => {
     it('resets state to initial values', async () => {
       await act(async () => {
