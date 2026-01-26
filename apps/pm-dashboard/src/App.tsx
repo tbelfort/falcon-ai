@@ -18,6 +18,36 @@ function resolveWsUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
+// Exported for testing
+export interface WsEventHandlerDeps {
+  selectedProjectId: string | null;
+  selectedIssueId: string | null;
+  loadIssues: (projectId: string) => Promise<void>;
+  loadLabels: (projectId: string) => Promise<void>;
+  loadComments: (issueId: string) => Promise<void>;
+}
+
+export function createWsEventHandler(deps: WsEventHandlerDeps) {
+  return (message: WsServerMessage) => {
+    if (message.type !== 'event') {
+      return;
+    }
+    if (deps.selectedProjectId && message.channel === `project:${deps.selectedProjectId}`) {
+      if (message.event.startsWith('issue.')) {
+        deps.loadIssues(deps.selectedProjectId);
+      }
+      if (message.event === 'label.created') {
+        deps.loadLabels(deps.selectedProjectId);
+      }
+    }
+    if (deps.selectedIssueId && message.channel === `issue:${deps.selectedIssueId}`) {
+      if (message.event === 'comment.created') {
+        deps.loadComments(deps.selectedIssueId);
+      }
+    }
+  };
+}
+
 export default function App() {
   const { projects, selectedProjectId, loadProjects, selectProject } = useProjectStore();
   const {
@@ -65,24 +95,13 @@ export default function App() {
   }, [selectedProjectId, selectedIssueId]);
 
   const handleWsEvent = useCallback(
-    (message: WsServerMessage) => {
-      if (message.type !== 'event') {
-        return;
-      }
-      if (selectedProjectId && message.channel === `project:${selectedProjectId}`) {
-        if (message.event.startsWith('issue.')) {
-          loadIssues(selectedProjectId);
-        }
-        if (message.event === 'label.created') {
-          loadLabels(selectedProjectId);
-        }
-      }
-      if (selectedIssueId && message.channel === `issue:${selectedIssueId}`) {
-        if (message.event === 'comment.created') {
-          loadComments(selectedIssueId);
-        }
-      }
-    },
+    createWsEventHandler({
+      selectedProjectId,
+      selectedIssueId,
+      loadIssues,
+      loadLabels,
+      loadComments,
+    }),
     [selectedProjectId, selectedIssueId, loadIssues, loadLabels, loadComments],
   );
 

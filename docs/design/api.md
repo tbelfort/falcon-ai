@@ -795,7 +795,7 @@ When `VITE_API_BASE_URL` is set, the WebSocket URL is derived by:
 2. Replacing the protocol: `http://` → `ws://`, `https://` → `wss://`
 3. Appending `/ws` path
 
-When `VITE_API_BASE_URL` is not set (MSW mocked mode), WebSocket connections are disabled.
+When `VITE_API_BASE_URL` is not set (MSW mocked mode), the WebSocket URL is derived from `window.location` using the same protocol/host transformation. This allows the dashboard to work in development without explicit configuration.
 
 ### Subscribe/Unsubscribe
 

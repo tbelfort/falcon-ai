@@ -2,9 +2,10 @@ import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/mocks/server';
 import { moveIssue } from '@/mocks/data';
-import App from '@/App';
+import App, { createWsEventHandler } from '@/App';
 import { useIssuesStore } from '@/stores/issues';
 import { useUiStore } from '@/stores/ui';
+import type { WsServerMessage } from '@/api/types';
 
 describe('Kanban UI', () => {
   it('renders columns and issue cards from mocked API', async () => {
@@ -271,5 +272,161 @@ describe('Kanban UI', () => {
     // Wait and verify API was still NOT called
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(addCommentSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('WebSocket event routing', () => {
+  it('routes issue events to loadIssues for project channel', () => {
+    const loadIssues = vi.fn();
+    const loadLabels = vi.fn();
+    const loadComments = vi.fn();
+
+    const handler = createWsEventHandler({
+      selectedProjectId: 'proj-123',
+      selectedIssueId: null,
+      loadIssues,
+      loadLabels,
+      loadComments,
+    });
+
+    // Test issue.created event
+    handler({
+      type: 'event',
+      channel: 'project:proj-123',
+      event: 'issue.created',
+      data: { id: 'issue-1' },
+    } as WsServerMessage);
+
+    expect(loadIssues).toHaveBeenCalledWith('proj-123');
+    expect(loadLabels).not.toHaveBeenCalled();
+    expect(loadComments).not.toHaveBeenCalled();
+  });
+
+  it('routes issue.updated events to loadIssues', () => {
+    const loadIssues = vi.fn();
+    const loadLabels = vi.fn();
+    const loadComments = vi.fn();
+
+    const handler = createWsEventHandler({
+      selectedProjectId: 'proj-123',
+      selectedIssueId: null,
+      loadIssues,
+      loadLabels,
+      loadComments,
+    });
+
+    handler({
+      type: 'event',
+      channel: 'project:proj-123',
+      event: 'issue.updated',
+      data: { id: 'issue-1' },
+    } as WsServerMessage);
+
+    expect(loadIssues).toHaveBeenCalledWith('proj-123');
+  });
+
+  it('routes label.created event to loadLabels', () => {
+    const loadIssues = vi.fn();
+    const loadLabels = vi.fn();
+    const loadComments = vi.fn();
+
+    const handler = createWsEventHandler({
+      selectedProjectId: 'proj-123',
+      selectedIssueId: null,
+      loadIssues,
+      loadLabels,
+      loadComments,
+    });
+
+    handler({
+      type: 'event',
+      channel: 'project:proj-123',
+      event: 'label.created',
+      data: { id: 'label-1' },
+    } as WsServerMessage);
+
+    expect(loadLabels).toHaveBeenCalledWith('proj-123');
+    expect(loadIssues).not.toHaveBeenCalled();
+  });
+
+  it('routes comment.created event to loadComments for issue channel', () => {
+    const loadIssues = vi.fn();
+    const loadLabels = vi.fn();
+    const loadComments = vi.fn();
+
+    const handler = createWsEventHandler({
+      selectedProjectId: 'proj-123',
+      selectedIssueId: 'issue-456',
+      loadIssues,
+      loadLabels,
+      loadComments,
+    });
+
+    handler({
+      type: 'event',
+      channel: 'issue:issue-456',
+      event: 'comment.created',
+      data: { id: 'comment-1' },
+    } as WsServerMessage);
+
+    expect(loadComments).toHaveBeenCalledWith('issue-456');
+    expect(loadIssues).not.toHaveBeenCalled();
+    expect(loadLabels).not.toHaveBeenCalled();
+  });
+
+  it('ignores events from unrelated channels', () => {
+    const loadIssues = vi.fn();
+    const loadLabels = vi.fn();
+    const loadComments = vi.fn();
+
+    const handler = createWsEventHandler({
+      selectedProjectId: 'proj-123',
+      selectedIssueId: 'issue-456',
+      loadIssues,
+      loadLabels,
+      loadComments,
+    });
+
+    // Event for a different project
+    handler({
+      type: 'event',
+      channel: 'project:proj-other',
+      event: 'issue.created',
+      data: { id: 'issue-1' },
+    } as WsServerMessage);
+
+    // Event for a different issue
+    handler({
+      type: 'event',
+      channel: 'issue:issue-other',
+      event: 'comment.created',
+      data: { id: 'comment-1' },
+    } as WsServerMessage);
+
+    expect(loadIssues).not.toHaveBeenCalled();
+    expect(loadLabels).not.toHaveBeenCalled();
+    expect(loadComments).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-event messages', () => {
+    const loadIssues = vi.fn();
+    const loadLabels = vi.fn();
+    const loadComments = vi.fn();
+
+    const handler = createWsEventHandler({
+      selectedProjectId: 'proj-123',
+      selectedIssueId: null,
+      loadIssues,
+      loadLabels,
+      loadComments,
+    });
+
+    handler({ type: 'connected', clientId: 'client-1' } as WsServerMessage);
+    handler({ type: 'pong' } as WsServerMessage);
+    handler({ type: 'subscribed', channel: 'project:proj-123' } as WsServerMessage);
+
+    expect(loadIssues).not.toHaveBeenCalled();
+    expect(loadLabels).not.toHaveBeenCalled();
+    expect(loadComments).not.toHaveBeenCalled();
   });
 });

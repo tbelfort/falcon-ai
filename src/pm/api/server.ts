@@ -14,10 +14,17 @@ export interface ApiServerOptions {
   broadcaster?: WsBroadcaster;
 }
 
-function resolveCorsOrigins(): string[] | boolean {
+const DEFAULT_LOCALHOST_ORIGINS = [
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
+function resolveCorsOrigins(): string[] {
   const raw = process.env.FALCON_PM_CORS_ORIGINS;
   if (!raw) {
-    return true;
+    return DEFAULT_LOCALHOST_ORIGINS;
   }
 
   const origins = raw
@@ -25,7 +32,7 @@ function resolveCorsOrigins(): string[] | boolean {
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 
-  return origins.length > 0 ? origins : true;
+  return origins.length > 0 ? origins : DEFAULT_LOCALHOST_ORIGINS;
 }
 
 export function createApiServer(options: ApiServerOptions) {

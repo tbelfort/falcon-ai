@@ -33,7 +33,10 @@ export function KanbanBoard({ issues, onSelectIssue, onMoveIssue }: KanbanBoardP
   }, {} as Record<IssueStage, IssueDto[]>);
 
   issues.forEach((issue) => {
-    issuesByStage[issue.stage].push(issue);
+    // Guard against unknown stages to prevent TypeError
+    if (issuesByStage[issue.stage]) {
+      issuesByStage[issue.stage].push(issue);
+    }
   });
 
   const handleDragEnd = (event: DragEndEvent) => {

@@ -555,3 +555,28 @@ Users should manually refresh (by re-selecting the project or reloading the page
 - The connection was lost for an extended period
 - They notice unexpected issue states
 - The WebSocket indicator shows recent reconnection
+
+## WebSocket Precedence During Rollback
+
+When an optimistic update fails and needs to be rolled back, the dashboard checks if a WebSocket event has updated the issue in the meantime:
+
+```typescript
+// On optimistic update error:
+// 1. Check if current stage matches our optimistic target
+// 2. If WS already updated it to something else, keep the WS state
+// 3. Only rollback if the issue is still in our optimistic state
+if (currentIssue?.stage !== toStage) {
+  return state; // Keep WS state, don't rollback
+}
+```
+
+This ensures that real-time updates from the server take precedence over local rollbacks, preventing stale data from overwriting authoritative server state.
+
+## Comment Author Convention
+
+In single-user localhost mode (no authentication), the dashboard uses `"You"` as the `authorName` for comments created by the user. This provides a clear visual distinction between user comments and agent-generated comments without requiring a login system.
+
+```typescript
+// When creating comments in the modal
+addComment(issueId, commentText, 'You');
+```

@@ -519,4 +519,101 @@ describe('useIssuesStore', () => {
       expect(state.commentsByIssueId).toEqual({});
     });
   });
+
+  describe('moveIssueStage WS interference', () => {
+    it('does not rollback when WS updates issue during failed optimistic update', async () => {
+      // First load issues
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      // Set up API to fail after a delay
+      server.use(
+        http.post('/api/issues/:id/transition', async () => {
+          // Simulate network delay
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return HttpResponse.json(
+            { error: { code: 'server_error', message: 'Server unavailable' } },
+            { status: 500 },
+          );
+        }),
+      );
+
+      const onError = vi.fn();
+
+      // Start the optimistic move
+      const movePromise = act(async () => {
+        await useIssuesStore.getState().moveIssueStage('issue-101', 'TODO', onError);
+      });
+
+      // Simulate WS event updating the issue to a different stage DURING the API call
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        // WS updates issue-101 to IMPLEMENT (different from our optimistic 'TODO')
+        useIssuesStore.getState().replaceIssue({
+          id: 'issue-101',
+          projectId: 'proj-falcon',
+          number: 101,
+          title: 'Bootstrap PM dashboard shell',
+          description: 'Create the initial app shell.',
+          stage: 'IMPLEMENT', // WS says it's now in IMPLEMENT
+          assignedAgentId: 'A-77',
+          labels: [],
+        });
+      });
+
+      // Wait for the move to complete (and fail)
+      await movePromise;
+
+      // Verify error callback was called
+      expect(onError).toHaveBeenCalledWith('Server unavailable');
+
+      // Verify issue is still in IMPLEMENT (WS state), NOT rolled back to BACKLOG (original)
+      const state = useIssuesStore.getState();
+      if (state.issues.status === 'success') {
+        const issue = state.issues.data.find((i) => i.id === 'issue-101');
+        expect(issue?.stage).toBe('IMPLEMENT');
+      }
+    });
+
+    it('does rollback when WS has not updated the issue', async () => {
+      // First load issues
+      await act(async () => {
+        await useIssuesStore.getState().loadIssues('proj-falcon');
+      });
+
+      // Get original stage
+      const originalState = useIssuesStore.getState();
+      const originalIssue = originalState.issues.status === 'success'
+        ? originalState.issues.data.find((i) => i.id === 'issue-101')
+        : null;
+      const originalStage = originalIssue?.stage;
+
+      // Set up API to fail
+      server.use(
+        http.post('/api/issues/:id/transition', () =>
+          HttpResponse.json(
+            { error: { code: 'invalid_transition', message: 'Invalid transition' } },
+            { status: 400 },
+          ),
+        ),
+      );
+
+      const onError = vi.fn();
+
+      await act(async () => {
+        await useIssuesStore.getState().moveIssueStage('issue-101', 'TODO', onError);
+      });
+
+      // Verify error callback was called
+      expect(onError).toHaveBeenCalledWith('Invalid transition');
+
+      // Verify issue was rolled back to original stage
+      const state = useIssuesStore.getState();
+      if (state.issues.status === 'success') {
+        const issue = state.issues.data.find((i) => i.id === 'issue-101');
+        expect(issue?.stage).toBe(originalStage);
+      }
+    });
+  });
 });
