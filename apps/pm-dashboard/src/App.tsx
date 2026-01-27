@@ -105,8 +105,11 @@ export default function App() {
     [selectedProjectId, selectedIssueId, loadIssues, loadLabels, loadComments],
   );
 
+  // Disable WebSocket in MSW mode (when VITE_API_BASE_URL is not set)
+  const isMswMode = !import.meta.env.VITE_API_BASE_URL;
+
   useWebSocket({
-    url: selectedProjectId ? wsUrl : null,
+    url: selectedProjectId && !isMswMode ? wsUrl : null,
     onEvent: handleWsEvent,
     subscriptions: wsChannels,
   });

@@ -492,7 +492,7 @@ All API requests have a 30-second timeout. When a request times out:
 When issues change, the dashboard uses a **full reload** strategy:
 
 1. When a project is selected, all issues are fetched via `GET /api/issues?projectId=X`
-2. WebSocket events trigger issue updates in the store via `replaceIssue()`
+2. WebSocket events trigger a full reload via `loadIssues()` to refresh the entire list
 3. Optimistic updates are applied immediately, then reconciled with server response
 4. On error, optimistic updates are rolled back to the original state
 
@@ -580,3 +580,80 @@ In single-user localhost mode (no authentication), the dashboard uses `"You"` as
 // When creating comments in the modal
 addComment(issueId, commentText, 'You');
 ```
+
+## Optimistic vs Non-Optimistic Updates
+
+The dashboard uses different update strategies depending on the operation:
+
+### Optimistic Updates (Immediate UI Feedback)
+
+**Stage transitions** use optimistic updates:
+- UI updates immediately when user drags an issue to a new column
+- If API call fails, the UI rolls back to the original stage
+- Error is shown via error banner callback
+
+```typescript
+// Stage moves are optimistic
+moveIssueStage(issueId, newStage, onError);
+// UI updates immediately, then API is called
+```
+
+### Non-Optimistic Updates (Wait for Server)
+
+**Label updates** are NOT optimistic:
+- UI waits for API response before reflecting changes
+- Simpler implementation, no rollback needed
+- Slight delay but guaranteed consistency
+
+```typescript
+// Label updates wait for server
+updateLabels(issueId, labelIds, onError);
+// API is called first, UI updates on success
+```
+
+### Rationale
+
+Stage transitions are optimistic because:
+- Drag-and-drop has strong user expectation of immediate feedback
+- Stages are single-valued, making rollback straightforward
+
+Label updates are non-optimistic because:
+- Toggle button click doesn't have same immediacy expectation
+- Multi-select labels are more complex to rollback correctly
+
+## Enum Mismatch Handling
+
+When the API returns an issue with a stage value not present in the frontend's `STAGE_ORDER` enum, the KanbanBoard silently skips that issue rather than crashing:
+
+```typescript
+issues.forEach((issue) => {
+  // Guard against unknown stages to prevent TypeError
+  if (issuesByStage[issue.stage]) {
+    issuesByStage[issue.stage].push(issue);
+  }
+});
+```
+
+This defensive behavior ensures:
+- Frontend doesn't crash if backend adds new stages before frontend is updated
+- Issues with unknown stages are simply not displayed (rather than breaking the board)
+- No error is logged since this may be expected during rollouts
+
+## Input Validation Conventions
+
+### Comment Whitespace Handling
+
+Comments are trimmed before submission. Empty or whitespace-only comments are rejected client-side:
+
+```typescript
+const trimmed = commentDraft.trim();
+if (!trimmed) {
+  return; // Do not submit empty comments
+}
+await onAddComment(trimmed);
+```
+
+This prevents:
+- Accidental empty comment submissions
+- Comments that are only whitespace
+- Unnecessary API calls for invalid input

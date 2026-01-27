@@ -100,7 +100,7 @@ export function fetchComments(issueId: string): Promise<CommentDto[]> {
 export function createComment(issueId: string, content: string, authorName?: string): Promise<CommentDto> {
   return request<CommentDto>(`/api/issues/${issueId}/comments`, {
     method: 'POST',
-    body: JSON.stringify({ content, authorName }),
+    body: JSON.stringify({ content, authorName, authorType: 'human' }),
   });
 }
 

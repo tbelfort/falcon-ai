@@ -13,7 +13,8 @@ interface IssueDetailModalProps {
 }
 
 function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleString();
+  // Backend returns Unix seconds, Date() expects milliseconds
+  return new Date(timestamp * 1000).toLocaleString();
 }
 
 export function IssueDetailModal({
