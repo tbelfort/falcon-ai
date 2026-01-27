@@ -1,8 +1,8 @@
-import type { WsEvent, WsEventType } from '../contracts/ws.js';
+import type { WsDomainEventType, WsEvent } from '../contracts/ws.js';
 
 export type WsBroadcaster = (
   channel: string,
-  event: WsEventType,
+  event: WsDomainEventType,
   data: WsEvent
 ) => void;
 

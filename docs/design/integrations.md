@@ -265,6 +265,73 @@ async function handlePREvent(payload: any) {
 }
 ```
 
+## Agent Invoker Interface
+
+All agent invocations (Claude, Codex, OpenAI) are abstracted behind the `AgentInvoker` interface:
+
+```typescript
+interface AgentInvoker {
+  invokeStage(args: {
+    agentId: string;
+    issueId: string;
+    stage: string;
+    prompt: string;
+    toolBaseUrl: string;
+    debug: boolean;
+  }): Promise<{ runId: string }>;
+}
+```
+
+### Debug Mode
+
+When `debug: true` is passed to `invokeStage()`:
+- Agent output is streamed line-by-line through the `OutputBus`
+- Clients can subscribe to real-time output via WebSocket (`run:<runId>` channel)
+- Output is processed through JSON-L parsing (for CLI tools that emit structured events)
+
+When `debug: false`:
+- Agent runs silently with no output streaming
+- Only the final result is captured
+- Preferred for production to reduce overhead
+
+### Resource Management
+
+All invokers implement:
+- **Process timeout**: 5-minute maximum execution time
+- **Concurrency control**: Maximum 5 concurrent agent processes via semaphore
+- **Prompt size validation**: 50KB maximum prompt size
+- **Credential scrubbing**: All output is sanitized before streaming
+
+### Buffer Deadlock Prevention
+
+Agent invokers set `stdio` to `['pipe', 'pipe', 'ignore']` (or similar) to **ignore stderr**. This prevents a buffer deadlock scenario:
+
+**Problem:** When a child process writes more data to stderr than the OS pipe buffer size (~64KB on most systems) while the parent is reading stdout, the child blocks waiting for the stderr buffer to drain. If the parent never reads stderr, this causes an indefinite hang.
+
+**Tradeoff:** Diagnostic information from stderr is lost. If debugging agent invocation failures, temporarily enable stderr capture with explicit draining:
+```typescript
+child.stderr?.on('data', (chunk) => { /* drain but discard */ });
+```
+
+**Do not remove** the `'ignore'` setting without implementing proper stderr draining.
+
+### Concurrency Control Scope
+
+**Important:** The semaphore is implemented at **module scope**, not instance scope:
+
+```typescript
+// Module-level (shared across all invoker instances)
+let activeProcesses = 0;
+const waitingQueue: Array<() => void> = [];
+```
+
+This means:
+- All `ClaudeCodeInvoker` instances share the same 5-slot limit
+- Creating multiple invokers does NOT increase available slots
+- This is intentional to prevent resource exhaustion when orchestrating multiple issues
+
+If independent limits are needed per orchestrator, the semaphore must be moved to instance scope (not currently supported).
+
 ## Claude Code Non-Interactive Invocation
 
 ### Using Claude Agent SDK (Recommended)

@@ -4,6 +4,22 @@
 
 This document defines the complete database schema for falcon-pm using SQLite with Drizzle ORM. All tables use UUIDs as primary keys and timestamps for auditing.
 
+## Timestamp Semantics
+
+All timestamp fields use Unix epoch seconds (not milliseconds). This applies to:
+- Database columns: `created_at`, `updated_at`, `started_at`, `completed_at`, `read_at`, `reviewed_at`
+- API responses: All timestamp fields in DTOs
+- WebSocket events: The `at` field in `OutputLine` and event payloads
+
+The `unixSeconds()` utility function should be used consistently:
+```typescript
+import { unixSeconds } from '../core/utils/time.js';
+
+const now = unixSeconds();  // Returns Math.floor(Date.now() / 1000)
+```
+
+Duration fields (like `duration_ms` in `workflow_runs`) are the exception and use milliseconds for precision.
+
 ## Entity Relationship Diagram
 
 ```
