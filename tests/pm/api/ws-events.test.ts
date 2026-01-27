@@ -54,6 +54,73 @@ function createMessageQueue(ws: WebSocket) {
   return { waitForMessage };
 }
 
+describe('pm api ws origin validation', () => {
+  it('rejects WebSocket connections from disallowed origins', async () => {
+    const repos = createInMemoryRepos();
+    const hub = createWebSocketHub();
+    const app = createApiServer({ repos, broadcaster: hub.broadcast });
+    const server = createServer(app);
+    hub.setupWebSocket(server);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+
+    // Attempt connection with disallowed origin
+    const ws = new WebSocket(`ws://localhost:${port}/ws`, {
+      headers: { origin: 'https://evil.example.com' },
+    });
+
+    // The connection may briefly open before the server closes it,
+    // so we wait for the close event regardless of whether open fires first
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Timed out waiting for connection to be closed'));
+      }, 5000);
+
+      ws.on('close', (code, reason) => {
+        clearTimeout(timeout);
+        try {
+          expect(code).toBe(1008);
+          expect(reason.toString()).toBe('Origin not allowed');
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+      ws.on('error', () => {
+        clearTimeout(timeout);
+        // Expected - connection rejected
+        resolve();
+      });
+    });
+
+    hub.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('accepts WebSocket connections without origin header', async () => {
+    const repos = createInMemoryRepos();
+    const hub = createWebSocketHub();
+    const app = createApiServer({ repos, broadcaster: hub.broadcast });
+    const server = createServer(app);
+    hub.setupWebSocket(server);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+
+    // Connection without origin header (non-browser client)
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    const queue = createMessageQueue(ws);
+
+    // Should receive connected message
+    await queue.waitForMessage((message) => message.type === 'connected');
+
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+});
+
 describe('pm api ws events', () => {
   it('broadcasts issue.created events', async () => {
     const repos = createInMemoryRepos();

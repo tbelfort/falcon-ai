@@ -265,6 +265,43 @@ async function handlePREvent(payload: any) {
 }
 ```
 
+## Agent Invoker Interface
+
+All agent invocations (Claude, Codex, OpenAI) are abstracted behind the `AgentInvoker` interface:
+
+```typescript
+interface AgentInvoker {
+  invokeStage(args: {
+    agentId: string;
+    issueId: string;
+    stage: string;
+    prompt: string;
+    toolBaseUrl: string;
+    debug: boolean;
+  }): Promise<{ runId: string }>;
+}
+```
+
+### Debug Mode
+
+When `debug: true` is passed to `invokeStage()`:
+- Agent output is streamed line-by-line through the `OutputBus`
+- Clients can subscribe to real-time output via WebSocket (`run:<runId>` channel)
+- Output is processed through JSON-L parsing (for CLI tools that emit structured events)
+
+When `debug: false`:
+- Agent runs silently with no output streaming
+- Only the final result is captured
+- Preferred for production to reduce overhead
+
+### Resource Management
+
+All invokers implement:
+- **Process timeout**: 5-minute maximum execution time
+- **Concurrency control**: Maximum 5 concurrent agent processes via semaphore
+- **Prompt size validation**: 50KB maximum prompt size
+- **Credential scrubbing**: All output is sanitized before streaming
+
 ## Claude Code Non-Interactive Invocation
 
 ### Using Claude Agent SDK (Recommended)

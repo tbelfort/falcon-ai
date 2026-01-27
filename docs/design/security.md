@@ -69,6 +69,32 @@ app.use('/api/agent', (req, res, next) => {
 });
 ```
 
+### Agent-Project Authorization
+
+Agent API endpoints validate that the requesting agent belongs to the same project as the target issue. This prevents cross-project data access:
+
+```typescript
+// In each agent endpoint handler
+const issue = repos.issues.getById(issueId);
+if (!issue) {
+  return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Issue not found' }});
+}
+
+const agent = repos.agents.getById(agentId);
+if (agent.projectId !== issue.projectId) {
+  return res.status(400).json({
+    error: {
+      code: 'VALIDATION_ERROR',
+      message: 'Agent is not assigned to this project',
+    },
+  });
+}
+```
+
+This check is performed in the agent router middleware and applies to all `/api/agent/issues/:id/*` endpoints.
+
+**Note on Phase 5 Implementation:** The current implementation validates agent-project association but does not enforce agent `status === 'working'` checks. Phase 5 will add full status validation to ensure agents can only access issues when actively assigned to work on them.
+
 ## GitHub Token Management
 
 ### Storage

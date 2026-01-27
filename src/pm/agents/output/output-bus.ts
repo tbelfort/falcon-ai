@@ -21,7 +21,13 @@ export class OutputBus {
     }
 
     for (const listener of listeners) {
-      listener(payload);
+      // Wrap listener calls in try/catch to prevent one failing listener
+      // from crashing the server or blocking other listeners
+      try {
+        listener(payload);
+      } catch (error) {
+        console.error('[OutputBus] Listener error:', error);
+      }
     }
   }
 

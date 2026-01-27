@@ -98,4 +98,80 @@ describe('pm agent api', () => {
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe('completed');
   });
+
+  it('rejects agent accessing issue from different project', async () => {
+    const { app, agentId } = await createFixture();
+
+    // Create a second project with its own issue
+    const project2Res = await request(app)
+      .post('/api/projects')
+      .send({ name: 'Project 2', slug: 'project-2', defaultBranch: 'main' });
+    const project2Id = project2Res.body.data.id as string;
+
+    const issue2Res = await request(app)
+      .post('/api/issues')
+      .send({ projectId: project2Id, title: 'Other project bug', priority: 'low' });
+    const issue2Id = issue2Res.body.data.id as string;
+
+    // Try to access project2's issue with project1's agent
+    const response = await request(app)
+      .get(`/api/agent/issues/${issue2Id}/context`)
+      .set('X-Agent-ID', agentId);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.message).toContain('not assigned to this project');
+  });
+
+  it('returns context successfully with valid agent', async () => {
+    const { app, issueId, agentId } = await createFixture();
+
+    const response = await request(app)
+      .get(`/api/agent/issues/${issueId}/context`)
+      .set('X-Agent-ID', agentId);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveProperty('issue');
+    expect(response.body.data).toHaveProperty('project');
+    expect(response.body.data).toHaveProperty('documents');
+    expect(response.body.data).toHaveProperty('stageMessages');
+    expect(response.body.data).toHaveProperty('workflow');
+    expect(response.body.data.issue.id).toBe(issueId);
+  });
+
+  it('records errors via POST /error', async () => {
+    const { app, issueId, agentId, repos } = await createFixture();
+
+    const response = await request(app)
+      .post(`/api/agent/issues/${issueId}/error`)
+      .set('X-Agent-ID', agentId)
+      .send({
+        errorType: 'build_failed',
+        message: 'TypeScript compilation errors',
+        details: 'Cannot find module X',
+      });
+
+    expect(response.status).toBe(200);
+    const runs = repos.workflowRuns.listByIssue(issueId);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].status).toBe('error');
+    expect(runs[0].errorMessage).toContain('build_failed');
+  });
+
+  it('rejects invalid path in filesChanged', async () => {
+    const { app, issueId, agentId } = await createFixture();
+
+    const response = await request(app)
+      .post(`/api/agent/issues/${issueId}/work-complete`)
+      .set('X-Agent-ID', agentId)
+      .send({
+        summary: 'Attempted traversal',
+        filesChanged: ['../../../etc/passwd'],
+        testsPassed: true,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.message).toContain('Invalid filesChanged path');
+  });
 });

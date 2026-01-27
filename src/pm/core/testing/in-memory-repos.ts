@@ -67,12 +67,13 @@ export class InMemoryProjectRepo implements ProjectRepo {
       return null;
     }
 
+    // Use explicit undefined check instead of ?? to allow setting fields to null
     const updated: ProjectDto = {
       ...existing,
       ...input,
-      description: input.description ?? existing.description,
-      repoUrl: input.repoUrl ?? existing.repoUrl,
-      config: input.config ?? existing.config,
+      description: input.description !== undefined ? input.description : existing.description,
+      repoUrl: input.repoUrl !== undefined ? input.repoUrl : existing.repoUrl,
+      config: input.config !== undefined ? input.config : existing.config,
     };
     this.items.set(id, updated);
     return updated;
@@ -118,19 +119,20 @@ export class InMemoryIssueRepo implements IssueRepo {
       return null;
     }
 
+    // Use explicit undefined check instead of ?? to allow setting fields to null
     const updated: IssueRecord = {
       ...existing,
       ...input,
-      description: input.description ?? existing.description,
-      presetId: input.presetId ?? existing.presetId,
-      branchName: input.branchName ?? existing.branchName,
-      prNumber: input.prNumber ?? existing.prNumber,
-      prUrl: input.prUrl ?? existing.prUrl,
-      assignedAgentId: input.assignedAgentId ?? existing.assignedAgentId,
-      assignedHuman: input.assignedHuman ?? existing.assignedHuman,
-      attributes: input.attributes ?? existing.attributes,
-      startedAt: input.startedAt ?? existing.startedAt,
-      completedAt: input.completedAt ?? existing.completedAt,
+      description: input.description !== undefined ? input.description : existing.description,
+      presetId: input.presetId !== undefined ? input.presetId : existing.presetId,
+      branchName: input.branchName !== undefined ? input.branchName : existing.branchName,
+      prNumber: input.prNumber !== undefined ? input.prNumber : existing.prNumber,
+      prUrl: input.prUrl !== undefined ? input.prUrl : existing.prUrl,
+      assignedAgentId: input.assignedAgentId !== undefined ? input.assignedAgentId : existing.assignedAgentId,
+      assignedHuman: input.assignedHuman !== undefined ? input.assignedHuman : existing.assignedHuman,
+      attributes: input.attributes !== undefined ? input.attributes : existing.attributes,
+      startedAt: input.startedAt !== undefined ? input.startedAt : existing.startedAt,
+      completedAt: input.completedAt !== undefined ? input.completedAt : existing.completedAt,
     };
     this.items.set(id, updated);
     return updated;
@@ -260,14 +262,15 @@ export class InMemoryAgentRepo implements AgentRepo {
       return null;
     }
 
+    // Use explicit undefined check instead of ?? to allow setting fields to null
     const updated: AgentDto = {
       ...existing,
       ...input,
-      config: input.config ?? existing.config,
-      currentIssueId: input.currentIssueId ?? existing.currentIssueId,
-      currentStage: input.currentStage ?? existing.currentStage,
-      lastActiveAt: input.lastActiveAt ?? existing.lastActiveAt,
-      totalTasksCompleted: input.totalTasksCompleted ?? existing.totalTasksCompleted,
+      config: input.config !== undefined ? input.config : existing.config,
+      currentIssueId: input.currentIssueId !== undefined ? input.currentIssueId : existing.currentIssueId,
+      currentStage: input.currentStage !== undefined ? input.currentStage : existing.currentStage,
+      lastActiveAt: input.lastActiveAt !== undefined ? input.lastActiveAt : existing.lastActiveAt,
+      totalTasksCompleted: input.totalTasksCompleted !== undefined ? input.totalTasksCompleted : existing.totalTasksCompleted,
     };
     this.items.set(id, updated);
     return updated;
@@ -339,17 +342,18 @@ export class InMemoryWorkflowRunRepo implements WorkflowRunRepo {
       return null;
     }
 
+    // Use explicit undefined check instead of ?? to allow setting fields to null
     const updated: WorkflowRunDto = {
       ...existing,
       ...input,
-      completedAt: input.completedAt ?? existing.completedAt,
-      resultSummary: input.resultSummary ?? existing.resultSummary,
-      errorMessage: input.errorMessage ?? existing.errorMessage,
-      durationMs: input.durationMs ?? existing.durationMs,
-      costUsd: input.costUsd ?? existing.costUsd,
-      tokensInput: input.tokensInput ?? existing.tokensInput,
-      tokensOutput: input.tokensOutput ?? existing.tokensOutput,
-      sessionId: input.sessionId ?? existing.sessionId,
+      completedAt: input.completedAt !== undefined ? input.completedAt : existing.completedAt,
+      resultSummary: input.resultSummary !== undefined ? input.resultSummary : existing.resultSummary,
+      errorMessage: input.errorMessage !== undefined ? input.errorMessage : existing.errorMessage,
+      durationMs: input.durationMs !== undefined ? input.durationMs : existing.durationMs,
+      costUsd: input.costUsd !== undefined ? input.costUsd : existing.costUsd,
+      tokensInput: input.tokensInput !== undefined ? input.tokensInput : existing.tokensInput,
+      tokensOutput: input.tokensOutput !== undefined ? input.tokensOutput : existing.tokensOutput,
+      sessionId: input.sessionId !== undefined ? input.sessionId : existing.sessionId,
     };
     this.items.set(id, updated);
     return updated;

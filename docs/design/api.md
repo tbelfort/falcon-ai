@@ -422,13 +422,39 @@ GET /api/agent/issues/:id/context
 ```json
 {
   "data": {
-    "issue": { ... },
-    "project": { ... },
+    "issue": {
+      "id": "uuid",
+      "projectId": "uuid",
+      "number": 42,
+      "title": "Fix authentication bug",
+      "description": "...",
+      "status": "in_progress",
+      "stage": "IMPLEMENT",
+      "priority": "high"
+    },
+    "project": {
+      "id": "uuid",
+      "name": "My Project",
+      "slug": "my-project",
+      "defaultBranch": "main",
+      "repoUrl": "https://github.com/..."
+    },
     "documents": [
-      { "type": "context_pack", "path": "...", "content": "..." }
+      {
+        "id": "uuid",
+        "title": "Context Pack",
+        "docType": "context_pack",
+        "filePath": ".falcon/issues/42/context/context-pack.md"
+      }
     ],
     "stageMessages": [
-      { "fromStage": "CONTEXT_PACK", "message": "Watch out for..." }
+      {
+        "id": "uuid",
+        "fromStage": "CONTEXT_PACK",
+        "toStage": "IMPLEMENT",
+        "message": "Watch out for...",
+        "priority": "important"
+      }
     ],
     "workflow": {
       "currentStage": "IMPLEMENT",
@@ -447,6 +473,8 @@ GET /api/agent/issues/:id/messages
 
 **Query Parameters:**
 - `forStage` (string): Current agent's stage
+
+**Side Effect:** When this endpoint is called with a `forStage` parameter, all matching unread messages are automatically marked as read. The `readAt` timestamp and `readBy` agent ID are set on the returned messages. This is a deliberate design choice to ensure messages are only processed once.
 
 ### Add Comment
 
@@ -828,6 +856,7 @@ When `VITE_API_BASE_URL` is not set (MSW mocked mode), the WebSocket URL is deri
 - `project:<id>` - Project-wide events
 - `issue:<id>` - Issue updates
 - `agent:<name>` - Agent status and output
+- `run:<runId>` - Real-time agent output streaming (debug mode only)
 
 Issue-scoped events are broadcast to both `project:<projectId>` and `issue:<issueId>`. Subscribe to the project channel for dashboards and to the issue channel for detail views.
 
@@ -836,7 +865,35 @@ Issue-scoped events are broadcast to both `project:<projectId>` and `issue:<issu
 - `stage_changed`, `status_changed`
 - `agent_assigned`, `agent_completed`
 - `finding_added`, `finding_reviewed`
-- `output` (agent debug output)
+- `agent.output` - Real-time agent output (debug mode)
+
+### Agent Output Streaming
+
+When subscribed to a `run:<runId>` channel, clients receive `agent.output` events:
+
+```json
+{
+  "type": "event",
+  "channel": "run:abc-123",
+  "event": "agent.output",
+  "data": {
+    "runId": "abc-123",
+    "agentId": "agent-1",
+    "issueId": "issue-456",
+    "at": 1705766400,
+    "line": "Reading file src/auth.ts..."
+  }
+}
+```
+
+The `OutputLine` structure:
+| Field | Type | Description |
+|-------|------|-------------|
+| `runId` | string | Workflow run identifier |
+| `agentId` | string | Agent that produced the output |
+| `issueId` | string | Issue being worked on |
+| `at` | number | Unix timestamp (seconds) |
+| `line` | string | Single line of agent output |
 
 ### Client Event Handling
 

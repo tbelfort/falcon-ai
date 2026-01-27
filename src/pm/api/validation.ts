@@ -36,6 +36,12 @@ export function isSafeRelativePath(value: string): boolean {
     return false;
   }
 
+  // Check for Windows-style absolute paths with drive letters (e.g., C:\, D:/)
+  // path.isAbsolute() won't catch these on Unix systems
+  if (/^[A-Za-z]:[\\/]/.test(value)) {
+    return false;
+  }
+
   if (value.startsWith('\\') || value.startsWith('//')) {
     return false;
   }
