@@ -51,19 +51,20 @@ function validatePromptSize(prompt: string): void {
   }
 }
 
-function killProcessWithTimeout(child: ChildProcess, rl?: Interface): void {
+function killProcessWithTimeout(child: ChildProcess, rl?: Interface): NodeJS.Timeout | undefined {
   if (rl) {
     rl.close();
   }
   if (!child.killed) {
     child.kill('SIGTERM');
     // Force kill after 5 seconds if still running
-    setTimeout(() => {
+    return setTimeout(() => {
       if (!child.killed) {
         child.kill('SIGKILL');
       }
     }, 5000);
   }
+  return undefined;
 }
 
 function runCodexJsonl(
@@ -78,19 +79,21 @@ function runCodexJsonl(
 
     let rl: Interface | undefined;
     let timeoutId: NodeJS.Timeout | undefined;
+    let killTimerId: NodeJS.Timeout | undefined;
     let resolved = false;
 
     const cleanup = (success: boolean, error?: string) => {
       if (resolved) return;
       resolved = true;
       if (timeoutId) clearTimeout(timeoutId);
+      if (killTimerId) clearTimeout(killTimerId);
       if (rl) rl.close();
       resolve({ success, error });
     };
 
     // Set process timeout
     timeoutId = setTimeout(() => {
-      killProcessWithTimeout(child, rl);
+      killTimerId = killProcessWithTimeout(child, rl);
       cleanup(false, 'Process timed out');
     }, PROCESS_TIMEOUT_MS);
 

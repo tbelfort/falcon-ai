@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApiServer } from '../../../src/pm/api/server.js';
 import { createWebSocketHub } from '../../../src/pm/api/websocket.js';
+import { OutputBus } from '../../../src/pm/agents/output/output-bus.js';
 import type { WsServerMessage } from '../../../src/pm/contracts/ws.js';
 import { createInMemoryRepos } from '../../../src/pm/core/testing/in-memory-repos.js';
 
@@ -248,6 +249,120 @@ describe('pm api ws events', () => {
     await queue.waitForMessage(
       (message) => message.type === 'event' && message.event === 'issue.updated'
     );
+
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('rejects subscriptions exceeding MAX_SUBSCRIPTIONS limit', async () => {
+    const repos = createInMemoryRepos();
+    const hub = createWebSocketHub();
+    const app = createApiServer({ repos, broadcaster: hub.broadcast });
+    const server = createServer(app);
+    hub.setupWebSocket(server);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    const queue = createMessageQueue(ws);
+    await queue.waitForMessage((message) => message.type === 'connected');
+
+    // Subscribe to 100 channels (the limit)
+    for (let i = 0; i < 100; i++) {
+      ws.send(JSON.stringify({ type: 'subscribe', channel: `test:channel-${i}` }));
+    }
+
+    // Wait for last subscription to be acknowledged
+    await queue.waitForMessage(
+      (message) => message.type === 'subscribed' && message.channel === 'test:channel-99'
+    );
+
+    // 101st subscription should be rejected
+    ws.send(JSON.stringify({ type: 'subscribe', channel: 'test:channel-100' }));
+
+    const errorMessage = await queue.waitForMessage((message) => message.type === 'error');
+    expect(errorMessage.type).toBe('error');
+    if (errorMessage.type === 'error') {
+      expect(errorMessage.message).toBe('Subscription limit exceeded');
+    }
+
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('rejects invalid channel names', async () => {
+    const repos = createInMemoryRepos();
+    const hub = createWebSocketHub();
+    const app = createApiServer({ repos, broadcaster: hub.broadcast });
+    const server = createServer(app);
+    hub.setupWebSocket(server);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    const queue = createMessageQueue(ws);
+    await queue.waitForMessage((message) => message.type === 'connected');
+
+    // Try to subscribe to channel with invalid characters
+    ws.send(JSON.stringify({ type: 'subscribe', channel: 'test/channel with spaces!' }));
+
+    const errorMessage = await queue.waitForMessage((message) => message.type === 'error');
+    expect(errorMessage.type).toBe('error');
+    if (errorMessage.type === 'error') {
+      expect(errorMessage.message).toBe('Invalid channel name');
+    }
+
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('broadcasts agent.output events to run: channel subscribers', async () => {
+    const repos = createInMemoryRepos();
+    const outputBus = new OutputBus();
+    const hub = createWebSocketHub({ outputBus });
+    const app = createApiServer({ repos, broadcaster: hub.broadcast });
+    const server = createServer(app);
+    hub.setupWebSocket(server);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    const queue = createMessageQueue(ws);
+    await queue.waitForMessage((message) => message.type === 'connected');
+
+    // Subscribe to a run channel
+    ws.send(JSON.stringify({ type: 'subscribe', channel: 'run:test-run-123' }));
+    await queue.waitForMessage(
+      (message) => message.type === 'subscribed' && message.channel === 'run:test-run-123'
+    );
+
+    // Publish to the OutputBus
+    outputBus.publish({
+      runId: 'test-run-123',
+      agentId: 'agent-1',
+      issueId: 'issue-1',
+      line: 'Hello from agent',
+    });
+
+    // Should receive agent.output event
+    const eventMessage = await queue.waitForMessage(
+      (message) => message.type === 'event' && message.event === 'agent.output'
+    );
+
+    expect(eventMessage.type).toBe('event');
+    if (eventMessage.type === 'event') {
+      expect(eventMessage.event).toBe('agent.output');
+      expect(eventMessage.channel).toBe('run:test-run-123');
+      const data = eventMessage.data as { line: string; runId: string };
+      expect(data.line).toBe('Hello from agent');
+      expect(data.runId).toBe('test-run-123');
+    }
 
     ws.close();
     hub.close();

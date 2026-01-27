@@ -612,6 +612,11 @@ The following regex patterns are matched and replaced with `[REDACTED]`:
 | `glpat-[A-Za-z0-9_-]+` | GitLab Personal Access Tokens | `glpat-xxxxxxxxxxxx` |
 | `Bearer\s+[A-Za-z0-9._-]+` | Bearer tokens in headers | `Bearer eyJhbGci...` |
 | `AKIA[A-Z0-9]{16}` | AWS Access Key IDs | `AKIAIOSFODNN7EXAMPLE` |
+| `aws_secret_access_key...` | AWS Secret Access Keys | `aws_secret_access_key=wJalrXUtn...` |
+| `sk-[A-Za-z0-9]{20,}` | OpenAI API Keys | `sk-xxxxxxxxxxxx...` |
+| `sk-ant-[A-Za-z0-9_-]+` | Anthropic API Keys | `sk-ant-xxxxxxxxxxxx` |
+| `xoxb-[A-Za-z0-9-]+` | Slack Bot Tokens | `xoxb-xxxxxxxxxxxx` |
+| `xoxp-[A-Za-z0-9-]+` | Slack User Tokens | `xoxp-xxxxxxxxxxxx` |
 
 ### Implementation
 
@@ -638,6 +643,20 @@ function wrapGitError(error: unknown): Error {
 ```
 
 All git operations in `git-sync.ts` wrap errors through `wrapGitError()` before re-throwing, ensuring credentials are never exposed in error messages.
+
+## Agent Output Credential Scrubbing
+
+Agent invokers (`claude-code-invoker.ts`, `codex-cli-invoker.ts`) scrub credentials from ALL output **before** publishing to the OutputBus. This boundary is security-critical:
+
+```
+Agent Process → JSON Events → scrubCredentials() → OutputBus → WebSocket → UI
+                              ↑
+                        SCRUBBING BOUNDARY
+```
+
+**Important for future development:** Any new output path from agent processes MUST call `scrubCredentials()` before the data leaves the invoker. The shared patterns are defined in `credential-scrubber.ts`.
+
+This ensures credentials are never stored in logs, databases, or transmitted over WebSockets, regardless of where the output ultimately ends up.
 
 ## Git Hook Protection
 
@@ -767,6 +786,21 @@ function validatePathSegment(value: string, paramName: string): void {
 ```
 
 This prevents path traversal attacks where malicious values like `../../../etc/passwd` could escape the intended directory structure.
+
+### Cross-Platform Path Validation
+
+The `isSafeRelativePath()` function in `src/pm/api/validation.ts` validates paths for BOTH Unix and Windows patterns regardless of the host OS:
+
+```typescript
+// Rejects these even on Unix:
+// - C:\Windows\System32  (Windows absolute)
+// - \\server\share       (UNC path)
+// - //network/path       (Network path)
+```
+
+**Rationale:** User input may originate from different platforms (clipboard paste, API calls). Validating only for the host OS would allow Windows-style paths to bypass checks on Unix servers.
+
+**Do not remove** Windows path checks even if the server only runs on Unix.
 
 ## Worktree Existence Checks
 

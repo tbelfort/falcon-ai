@@ -48,6 +48,69 @@ describe('pm agent api', () => {
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
   });
 
+  it('rejects empty X-Agent-ID header', async () => {
+    const { app, issueId } = await createFixture();
+
+    const response = await request(app)
+      .get(`/api/agent/issues/${issueId}/context`)
+      .set('X-Agent-ID', '');
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects whitespace-only X-Agent-ID header', async () => {
+    const { app, issueId } = await createFixture();
+
+    const response = await request(app)
+      .get(`/api/agent/issues/${issueId}/context`)
+      .set('X-Agent-ID', '   ');
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects X-Agent-ID header exceeding max length', async () => {
+    const { app, issueId } = await createFixture();
+
+    const longId = 'a'.repeat(101); // LIMITS.id = 100
+    const response = await request(app)
+      .get(`/api/agent/issues/${issueId}/context`)
+      .set('X-Agent-ID', longId);
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('accepts X-Agent-ID header at max length', async () => {
+    const { app, issueId, repos } = await createFixture();
+
+    // Create an agent with exactly 100-char ID
+    const longId = 'a'.repeat(100);
+    const now = unixSeconds();
+    const projectRes = await request(app).get(`/api/issues/${issueId}`);
+    const projectId = projectRes.body.data.projectId as string;
+
+    repos.agents.create({
+      id: longId,
+      projectId,
+      name: 'LongIdAgent',
+      agentType: 'claude',
+      model: 'claude-3-5-sonnet',
+      status: 'idle',
+      currentIssueId: null,
+      currentStage: null,
+      workDir: '/tmp/falcon/long-agent',
+      config: null,
+      totalTasksCompleted: 0,
+      lastActiveAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const response = await request(app)
+      .get(`/api/agent/issues/${issueId}/context`)
+      .set('X-Agent-ID', longId);
+    expect(response.status).toBe(200);
+  });
+
   it('creates agent comments', async () => {
     const { app, issueId, agentId } = await createFixture();
 
@@ -79,6 +142,18 @@ describe('pm agent api', () => {
     expect(messagesRes.status).toBe(200);
     expect(messagesRes.body.data).toHaveLength(1);
     expect(messagesRes.body.data[0].message).toBe('Ready for review');
+  });
+
+  it('defaults priority to normal when omitted in stage-message', async () => {
+    const { app, issueId, agentId } = await createFixture();
+
+    const stageRes = await request(app)
+      .post(`/api/agent/issues/${issueId}/stage-message`)
+      .set('X-Agent-ID', agentId)
+      .send({ toStage: 'IMPLEMENT', message: 'Context ready' }); // No priority specified
+
+    expect(stageRes.status).toBe(200);
+    expect(stageRes.body.data.priority).toBe('normal');
   });
 
   it('records work completion', async () => {

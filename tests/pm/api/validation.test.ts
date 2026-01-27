@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApiServer } from '../../../src/pm/api/server.js';
 import { createInMemoryRepos } from '../../../src/pm/core/testing/in-memory-repos.js';
-import { isSafeRelativePath } from '../../../src/pm/api/validation.js';
+import { isSafeRelativePath, requireString, parsePagination, PAGINATION } from '../../../src/pm/api/validation.js';
 
 describe('pm api validation', () => {
   it('returns validation errors for bad payloads', async () => {
@@ -63,5 +63,72 @@ describe('isSafeRelativePath', () => {
     expect(isSafeRelativePath('')).toBe(true); // empty is valid (no segments)
     expect(isSafeRelativePath('...')).toBe(true); // ... is not ..
     expect(isSafeRelativePath('foo..bar')).toBe(true); // .. in name is ok
+  });
+});
+
+describe('requireString', () => {
+  it('returns null for non-string types', () => {
+    expect(requireString(null)).toBe(null);
+    expect(requireString(undefined)).toBe(null);
+    expect(requireString(123)).toBe(null);
+    expect(requireString(true)).toBe(null);
+    expect(requireString({})).toBe(null);
+    expect(requireString([])).toBe(null);
+  });
+
+  it('returns null for empty string', () => {
+    expect(requireString('')).toBe(null);
+  });
+
+  it('returns null for whitespace-only string', () => {
+    expect(requireString('   ')).toBe(null);
+    expect(requireString('\t\n')).toBe(null);
+  });
+
+  it('returns trimmed string for valid input', () => {
+    expect(requireString('hello')).toBe('hello');
+    expect(requireString('  hello  ')).toBe('hello');
+    expect(requireString('hello world')).toBe('hello world');
+  });
+});
+
+describe('parsePagination', () => {
+  it('returns defaults when both values undefined', () => {
+    const result = parsePagination(undefined, undefined);
+    expect(result).toEqual({
+      page: PAGINATION.defaultPage,
+      perPage: PAGINATION.defaultPerPage,
+    });
+  });
+
+  it('returns null for invalid page (non-positive)', () => {
+    expect(parsePagination(0, undefined)).toBe(null);
+    expect(parsePagination(-1, undefined)).toBe(null);
+  });
+
+  it('returns null for invalid page (non-integer)', () => {
+    expect(parsePagination(3.14, undefined)).toBe(null);
+    expect(parsePagination('abc', undefined)).toBe(null);
+  });
+
+  it('returns null for invalid perPage', () => {
+    expect(parsePagination(undefined, 0)).toBe(null);
+    expect(parsePagination(undefined, -5)).toBe(null);
+    expect(parsePagination(undefined, 'xyz')).toBe(null);
+  });
+
+  it('caps perPage at maxPerPage', () => {
+    const result = parsePagination(1, 500);
+    expect(result?.perPage).toBe(PAGINATION.maxPerPage);
+  });
+
+  it('accepts valid string numbers', () => {
+    const result = parsePagination('2', '25');
+    expect(result).toEqual({ page: 2, perPage: 25 });
+  });
+
+  it('handles mixed valid/invalid inputs', () => {
+    expect(parsePagination(1, 'invalid')).toBe(null);
+    expect(parsePagination('invalid', 10)).toBe(null);
   });
 });

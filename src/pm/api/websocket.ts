@@ -7,6 +7,8 @@ import type { WsClientMessage, WsServerMessage } from '../contracts/ws.js';
 type Client = { ws: WebSocket; subscriptions: Set<string> };
 const MAX_SUBSCRIPTIONS = 100;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
+const MAX_CHANNEL_LENGTH = 256;
+const CHANNEL_NAME_PATTERN = /^[a-zA-Z0-9:_-]+$/;
 
 const DEFAULT_LOCALHOST_ORIGINS = [
   'http://localhost:5174',
@@ -117,6 +119,20 @@ export function createWebSocketHub(options: WebSocketHubOptions = {}) {
         }
 
         if (msg.type === 'subscribe') {
+          // Validate channel name format
+          if (
+            !msg.channel
+            || msg.channel.length > MAX_CHANNEL_LENGTH
+            || !CHANNEL_NAME_PATTERN.test(msg.channel)
+          ) {
+            ws.send(
+              JSON.stringify(
+                { type: 'error', message: 'Invalid channel name' } satisfies WsServerMessage
+              )
+            );
+            return;
+          }
+
           if (
             !client.subscriptions.has(msg.channel)
             && client.subscriptions.size >= MAX_SUBSCRIPTIONS
@@ -184,7 +200,12 @@ export function createWebSocketHub(options: WebSocketHubOptions = {}) {
         client.subscriptions.has(channel)
         && client.ws.readyState === WebSocket.OPEN
       ) {
-        client.ws.send(payload);
+        try {
+          client.ws.send(payload);
+        } catch (error) {
+          // Log but don't throw - one failing client shouldn't block others
+          console.error('[WebSocket] Broadcast send failed:', error);
+        }
       }
     }
   }

@@ -25,6 +25,11 @@ const CREDENTIAL_PATTERNS = [
   /glpat-[A-Za-z0-9_-]+/gi, // GitLab PAT tokens
   /Bearer\s+[A-Za-z0-9._-]+/gi, // Bearer tokens
   /AKIA[A-Z0-9]{16}/g, // AWS access key IDs
+  /(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)['"=:\s]+[A-Za-z0-9/+=]{40}/gi, // AWS secret access keys
+  /sk-[A-Za-z0-9]{20,}/gi, // OpenAI API keys
+  /sk-ant-[A-Za-z0-9_-]+/gi, // Anthropic API keys
+  /xoxb-[A-Za-z0-9-]+/gi, // Slack bot tokens
+  /xoxp-[A-Za-z0-9-]+/gi, // Slack user tokens
 ];
 
 const ALLOWED_URL_PROTOCOLS = ['https:', 'http:', 'git:', 'ssh:'];

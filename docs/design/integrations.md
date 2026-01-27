@@ -302,6 +302,36 @@ All invokers implement:
 - **Prompt size validation**: 50KB maximum prompt size
 - **Credential scrubbing**: All output is sanitized before streaming
 
+### Buffer Deadlock Prevention
+
+Agent invokers set `stdio` to `['pipe', 'pipe', 'ignore']` (or similar) to **ignore stderr**. This prevents a buffer deadlock scenario:
+
+**Problem:** When a child process writes more data to stderr than the OS pipe buffer size (~64KB on most systems) while the parent is reading stdout, the child blocks waiting for the stderr buffer to drain. If the parent never reads stderr, this causes an indefinite hang.
+
+**Tradeoff:** Diagnostic information from stderr is lost. If debugging agent invocation failures, temporarily enable stderr capture with explicit draining:
+```typescript
+child.stderr?.on('data', (chunk) => { /* drain but discard */ });
+```
+
+**Do not remove** the `'ignore'` setting without implementing proper stderr draining.
+
+### Concurrency Control Scope
+
+**Important:** The semaphore is implemented at **module scope**, not instance scope:
+
+```typescript
+// Module-level (shared across all invoker instances)
+let activeProcesses = 0;
+const waitingQueue: Array<() => void> = [];
+```
+
+This means:
+- All `ClaudeCodeInvoker` instances share the same 5-slot limit
+- Creating multiple invokers does NOT increase available slots
+- This is intentional to prevent resource exhaustion when orchestrating multiple issues
+
+If independent limits are needed per orchestrator, the semaphore must be moved to instance scope (not currently supported).
+
 ## Claude Code Non-Interactive Invocation
 
 ### Using Claude Agent SDK (Recommended)
