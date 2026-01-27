@@ -657,3 +657,37 @@ This prevents:
 - Accidental empty comment submissions
 - Comments that are only whitespace
 - Unnecessary API calls for invalid input
+
+## Concurrent Move Protection
+
+### pendingMoveOriginalStage Pattern
+
+When a user rapidly moves the same issue multiple times (e.g., dragging through columns quickly), a naive implementation would capture the optimistic state from the first move as the "original" stage for the second move, leading to incorrect rollback behavior.
+
+The `pendingMoveOriginalStage` map tracks the true original stage per-issue:
+
+```typescript
+// In IssuesState type
+pendingMoveOriginalStage: Record<string, IssueStage>;
+
+// In moveIssueStage
+const originalStage = pendingMoveOriginalStage[issueId] ?? existing.stage;
+
+// On optimistic update, record the original stage (only if not already tracking)
+set((state) => ({
+  ...state,
+  pendingMoveOriginalStage: {
+    ...state.pendingMoveOriginalStage,
+    [issueId]: originalStage,
+  },
+}));
+
+// On success or failure, clear the tracking
+const { [issueId]: _, ...remainingPending } = state.pendingMoveOriginalStage;
+```
+
+This ensures:
+- First move captures the true original stage
+- Subsequent rapid moves preserve the original stage reference
+- Rollback always returns to the correct pre-operation state
+- Tracking is cleaned up after operation completes (success or failure)

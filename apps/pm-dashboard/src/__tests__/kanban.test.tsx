@@ -2,7 +2,7 @@ import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/mocks/server';
 import { moveIssue } from '@/mocks/data';
-import App, { createWsEventHandler } from '@/App';
+import App, { createWsEventHandler, resolveWsUrl } from '@/App';
 import { useIssuesStore } from '@/stores/issues';
 import { useUiStore } from '@/stores/ui';
 import type { WsServerMessage, IssueDto, IssueStage } from '@/api/types';
@@ -191,7 +191,7 @@ describe('Kanban UI', () => {
             content: body.content,
             authorType: 'human',
             authorName: body.authorName ?? 'Anonymous',
-            createdAt: Date.now(),
+            createdAt: Math.floor(Date.now() / 1000),
           },
         });
       }),
@@ -242,7 +242,7 @@ describe('Kanban UI', () => {
             content: body.content,
             authorType: 'human',
             authorName: 'Anonymous',
-            createdAt: Date.now(),
+            createdAt: Math.floor(Date.now() / 1000),
           },
         });
       }),
@@ -547,5 +547,27 @@ describe('WebSocket event routing', () => {
     expect(loadIssues).not.toHaveBeenCalled();
     expect(loadLabels).not.toHaveBeenCalled();
     expect(loadComments).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveWsUrl', () => {
+  it('converts http base URL to ws protocol', () => {
+    const result = resolveWsUrl('http://localhost:3002', 'http:', 'localhost:5174');
+    expect(result).toBe('ws://localhost:3002/ws');
+  });
+
+  it('converts https base URL to wss protocol', () => {
+    const result = resolveWsUrl('https://api.example.com', 'https:', 'example.com');
+    expect(result).toBe('wss://api.example.com/ws');
+  });
+
+  it('derives from window.location when no base URL provided', () => {
+    const result = resolveWsUrl(undefined, 'http:', 'localhost:5174');
+    expect(result).toBe('ws://localhost:5174/ws');
+  });
+
+  it('uses wss when window.location is https and no base URL', () => {
+    const result = resolveWsUrl(undefined, 'https:', 'example.com');
+    expect(result).toBe('wss://example.com/ws');
   });
 });

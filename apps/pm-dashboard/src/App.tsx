@@ -7,15 +7,16 @@ import { useProjectStore } from '@/stores/projects';
 import { useUiStore } from '@/stores/ui';
 import type { IssueStage, WsServerMessage } from '@/api/types';
 
-function resolveWsUrl(): string {
-  const base = import.meta.env.VITE_API_BASE_URL;
+// Exported for testing
+export function resolveWsUrl(baseUrl?: string, locationProtocol?: string, locationHost?: string): string {
+  const base = baseUrl ?? import.meta.env.VITE_API_BASE_URL;
   if (base) {
-    const url = new URL(base, window.location.origin);
+    const url = new URL(base, `${locationProtocol ?? window.location.protocol}//${locationHost ?? window.location.host}`);
     const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${url.host}/ws`;
   }
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws`;
+  const protocol = (locationProtocol ?? window.location.protocol) === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${locationHost ?? window.location.host}/ws`;
 }
 
 // Exported for testing

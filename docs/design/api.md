@@ -570,10 +570,8 @@ POST /api/issues/:issueId/comments
 }
 ```
 
-**authorType Inference Rule:**
-When `authorType` is provided, it is used directly. When omitted:
-- If `authorName` is provided: `authorType` defaults to `'human'`
-- If `authorName` is omitted: `authorType` defaults to `'agent'` and `authorName` defaults to `'Falcon Agent'`
+**Required Fields:**
+Both `authorType` and `authorName` are required by the backend. The client must provide explicit values for both fields.
 
 ---
 

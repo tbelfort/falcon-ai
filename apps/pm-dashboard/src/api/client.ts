@@ -51,6 +51,10 @@ async function parseResponse<T>(response: Response): Promise<T> {
     throw new ApiRequestError(apiError?.message ?? 'Unknown error', apiError?.code ?? 'unknown', apiError?.details, response.status);
   }
 
+  if (!('data' in payload)) {
+    throw new ApiRequestError('Response missing data field', 'invalid_response', undefined, response.status);
+  }
+
   return payload.data;
 }
 
