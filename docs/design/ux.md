@@ -446,3 +446,248 @@ onMessage((data) => {
 - Focus indicators on all interactive elements
 - ARIA labels for status badges
 - Screen reader announcements for real-time updates
+
+## Error Handling Patterns
+
+The dashboard uses callback-based error handling for user-facing operations:
+
+### Callback-Based Errors (User-Facing Operations)
+For operations where the user needs to see feedback, errors are passed via callback:
+
+```typescript
+// Stage transitions
+moveIssueStage(issueId, stage, (errorMessage) => {
+  showErrorBanner(errorMessage);
+});
+
+// Label updates (also user-facing)
+updateLabels(issueId, labelIds, (errorMessage) => {
+  showErrorBanner(errorMessage);
+});
+```
+
+This allows the UI to display error banners that the user can dismiss.
+
+**Note:** Label updates ARE user-facing operations and should use error callbacks when possible. If no callback is provided, errors are logged to console as a fallback.
+
+### Error Message Fallback Convention
+
+When extracting error messages from caught errors, use this pattern:
+
+```typescript
+const message = error instanceof Error ? error.message : 'Operation failed';
+```
+
+This ensures a user-friendly message is always available even for non-Error exceptions.
+
+### API Request Timeout
+
+All API requests have a 30-second timeout. When a request times out:
+- The fetch is aborted via `AbortSignal.timeout(30000)`
+- An `AbortError` is thrown
+- The UI should display an appropriate error message (e.g., "Request timed out")
+
+## Issue List Refresh Strategy
+
+When issues change, the dashboard uses a **full reload** strategy:
+
+1. When a project is selected, all issues are fetched via `GET /api/issues?projectId=X`
+2. WebSocket events trigger a full reload via `loadIssues()` to refresh the entire list
+3. Optimistic updates are applied immediately, then reconciled with server response
+4. On error, optimistic updates are rolled back to the original state
+
+This approach was chosen over granular updates for simplicity and to avoid stale data issues.
+
+## Kanban Column Order (STAGE_ORDER)
+
+Columns are displayed in a fixed order defined in `utils/stages.ts`:
+
+```typescript
+const STAGE_ORDER: IssueStage[] = [
+  'BACKLOG',
+  'TODO',
+  'CONTEXT_PACK',
+  'CONTEXT_REVIEW',
+  'SPEC',
+  'SPEC_REVIEW',
+  'IMPLEMENT',
+  'PR_REVIEW',
+  'PR_HUMAN_REVIEW',
+  'FIXER',
+  'TESTING',
+  'DOC_REVIEW',
+  'MERGE_READY',
+  'DONE',
+];
+```
+
+Each stage has associated styling (background and text colors) defined in `getStageTone()`.
+
+The Kanban board filters visible columns based on user preferences, but maintains this ordering.
+
+## WebSocket Reconnection Strategy
+
+When the WebSocket connection drops and reconnects, the dashboard follows a **trust cache, no refetch** strategy:
+
+### Behavior on Reconnect
+
+1. **No automatic data refetch** — The dashboard does not automatically reload issues, projects, or comments when WebSocket reconnects
+2. **Cache remains authoritative** — Data loaded in Zustand stores is trusted until the user explicitly triggers a refresh (e.g., selecting a different project)
+3. **Missed events are not recovered** — Events that occurred during the disconnection window are lost
+
+### Rationale
+
+This approach was chosen because:
+- **Simplicity** — Avoids complex event replay or delta-sync logic
+- **Predictability** — Users can manually refresh if they suspect stale data
+- **Performance** — Prevents unnecessary API load on flaky connections
+
+### Reconnection Timing
+
+The WebSocket uses exponential backoff for reconnection attempts:
+- Initial delay: 1 second
+- Maximum delay: 30 seconds
+- Backoff multiplier: 2x per failed attempt
+
+### When Data May Be Stale
+
+Users should manually refresh (by re-selecting the project or reloading the page) if:
+- The connection was lost for an extended period
+- They notice unexpected issue states
+- The WebSocket indicator shows recent reconnection
+
+## WebSocket Precedence During Rollback
+
+When an optimistic update fails and needs to be rolled back, the dashboard checks if a WebSocket event has updated the issue in the meantime:
+
+```typescript
+// On optimistic update error:
+// 1. Check if current stage matches our optimistic target
+// 2. If WS already updated it to something else, keep the WS state
+// 3. Only rollback if the issue is still in our optimistic state
+if (currentIssue?.stage !== toStage) {
+  return state; // Keep WS state, don't rollback
+}
+```
+
+This ensures that real-time updates from the server take precedence over local rollbacks, preventing stale data from overwriting authoritative server state.
+
+## Comment Author Convention
+
+In single-user localhost mode (no authentication), the dashboard uses `"You"` as the `authorName` for comments created by the user. This provides a clear visual distinction between user comments and agent-generated comments without requiring a login system.
+
+```typescript
+// When creating comments in the modal
+addComment(issueId, commentText, 'You');
+```
+
+## Optimistic vs Non-Optimistic Updates
+
+The dashboard uses different update strategies depending on the operation:
+
+### Optimistic Updates (Immediate UI Feedback)
+
+**Stage transitions** use optimistic updates:
+- UI updates immediately when user drags an issue to a new column
+- If API call fails, the UI rolls back to the original stage
+- Error is shown via error banner callback
+
+```typescript
+// Stage moves are optimistic
+moveIssueStage(issueId, newStage, onError);
+// UI updates immediately, then API is called
+```
+
+### Non-Optimistic Updates (Wait for Server)
+
+**Label updates** are NOT optimistic:
+- UI waits for API response before reflecting changes
+- Simpler implementation, no rollback needed
+- Slight delay but guaranteed consistency
+
+```typescript
+// Label updates wait for server
+updateLabels(issueId, labelIds, onError);
+// API is called first, UI updates on success
+```
+
+### Rationale
+
+Stage transitions are optimistic because:
+- Drag-and-drop has strong user expectation of immediate feedback
+- Stages are single-valued, making rollback straightforward
+
+Label updates are non-optimistic because:
+- Toggle button click doesn't have same immediacy expectation
+- Multi-select labels are more complex to rollback correctly
+
+## Enum Mismatch Handling
+
+When the API returns an issue with a stage value not present in the frontend's `STAGE_ORDER` enum, the KanbanBoard silently skips that issue rather than crashing:
+
+```typescript
+issues.forEach((issue) => {
+  // Guard against unknown stages to prevent TypeError
+  if (issuesByStage[issue.stage]) {
+    issuesByStage[issue.stage].push(issue);
+  }
+});
+```
+
+This defensive behavior ensures:
+- Frontend doesn't crash if backend adds new stages before frontend is updated
+- Issues with unknown stages are simply not displayed (rather than breaking the board)
+- No error is logged since this may be expected during rollouts
+
+## Input Validation Conventions
+
+### Comment Whitespace Handling
+
+Comments are trimmed before submission. Empty or whitespace-only comments are rejected client-side:
+
+```typescript
+const trimmed = commentDraft.trim();
+if (!trimmed) {
+  return; // Do not submit empty comments
+}
+await onAddComment(trimmed);
+```
+
+This prevents:
+- Accidental empty comment submissions
+- Comments that are only whitespace
+- Unnecessary API calls for invalid input
+
+## Concurrent Move Protection
+
+### pendingMoveOriginalStage Pattern
+
+When a user rapidly moves the same issue multiple times (e.g., dragging through columns quickly), a naive implementation would capture the optimistic state from the first move as the "original" stage for the second move, leading to incorrect rollback behavior.
+
+The `pendingMoveOriginalStage` map tracks the true original stage per-issue:
+
+```typescript
+// In IssuesState type
+pendingMoveOriginalStage: Record<string, IssueStage>;
+
+// In moveIssueStage
+const originalStage = pendingMoveOriginalStage[issueId] ?? existing.stage;
+
+// On optimistic update, record the original stage (only if not already tracking)
+set((state) => ({
+  ...state,
+  pendingMoveOriginalStage: {
+    ...state.pendingMoveOriginalStage,
+    [issueId]: originalStage,
+  },
+}));
+
+// On success or failure, clear the tracking
+const { [issueId]: _, ...remainingPending } = state.pendingMoveOriginalStage;
+```
+
+This ensures:
+- First move captures the true original stage
+- Subsequent rapid moves preserve the original stage reference
+- Rollback always returns to the correct pre-operation state
+- Tracking is cleaned up after operation completes (success or failure)

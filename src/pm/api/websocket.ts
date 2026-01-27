@@ -1,11 +1,42 @@
 import { randomUUID } from 'node:crypto';
-import type { Server as HttpServer } from 'node:http';
-import { WebSocketServer, WebSocket } from 'ws';
+import type { Server as HttpServer, IncomingMessage } from 'node:http';
+import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { WsClientMessage, WsServerMessage } from '../contracts/ws.js';
 
 type Client = { ws: WebSocket; subscriptions: Set<string> };
 const MAX_SUBSCRIPTIONS = 100;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
+
+const DEFAULT_LOCALHOST_ORIGINS = [
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
+function resolveAllowedOrigins(): Set<string> {
+  const raw = process.env.FALCON_PM_CORS_ORIGINS;
+  if (!raw) {
+    return new Set(DEFAULT_LOCALHOST_ORIGINS);
+  }
+
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return new Set(origins.length > 0 ? origins : DEFAULT_LOCALHOST_ORIGINS);
+}
+
+function isOriginAllowed(request: IncomingMessage): boolean {
+  const origin = request.headers.origin;
+  // Allow connections without Origin header (e.g., from non-browser clients)
+  if (!origin) {
+    return true;
+  }
+  const allowedOrigins = resolveAllowedOrigins();
+  return allowedOrigins.has(origin);
+}
 
 export function createWebSocketHub() {
   const clients = new Map<string, Client>();
@@ -14,13 +45,19 @@ export function createWebSocketHub() {
   function setupWebSocket(server: HttpServer) {
     wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_PAYLOAD_BYTES });
 
-    wss.on('connection', (ws) => {
+    wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
+      // Validate Origin header to prevent cross-site WebSocket hijacking
+      if (!isOriginAllowed(request)) {
+        ws.close(1008, 'Origin not allowed');
+        return;
+      }
+
       const clientId = randomUUID();
       clients.set(clientId, { ws, subscriptions: new Set() });
 
       ws.send(JSON.stringify({ type: 'connected', clientId } satisfies WsServerMessage));
 
-      ws.on('message', (data) => {
+      ws.on('message', (data: RawData) => {
         let msg: WsClientMessage | null = null;
         try {
           msg = JSON.parse(data.toString()) as WsClientMessage;

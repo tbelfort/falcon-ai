@@ -63,6 +63,7 @@ All timestamp fields (`createdAt`, `updatedAt`, `startedAt`, `completedAt`, WS `
 | `AGENT_BUSY` | 409 | Agent is already working |
 | `INVALID_TRANSITION` | 400 | Invalid stage transition |
 | `INTERNAL_ERROR` | 500 | Server error |
+| `invalid_json` | N/A (client-side) | Response JSON parsing failed |
 
 ---
 
@@ -141,10 +142,11 @@ DELETE /api/projects/:id
 ### List Issues
 
 ```
-GET /api/projects/:projectId/issues
+GET /api/issues?projectId=<id>
 ```
 
 **Query Parameters:**
+- `projectId` (string, required): Filter by project ID
 - `status` (string[]): Filter by status (backlog, todo, in_progress, done)
 - `stage` (string): Filter by stage
 - `label` (string[]): Filter by label names
@@ -568,6 +570,9 @@ POST /api/issues/:issueId/comments
 }
 ```
 
+**Required Fields:**
+Both `authorType` and `authorName` are required by the backend. The client must provide explicit values for both fields.
+
 ---
 
 ## Orchestrator API
@@ -772,8 +777,29 @@ GET /api/runs/:id
 ### Connection
 
 ```
-ws://localhost:3002/ws?token=<auth-token>
+ws://localhost:3002/ws
 ```
+
+**Note on authentication:** The token query parameter (`?token=<auth-token>`) is reserved for future production deployments. In localhost development mode, WebSocket connections are accepted without authentication. Production deployments should implement token validation on the connection upgrade.
+
+### Connection Keepalive
+
+The client sends a ping message every 30 seconds to keep the connection alive:
+
+```json
+{ "type": "ping" }
+```
+
+The server responds with a pong message. If the connection is lost, the client should implement exponential backoff reconnection (starting at 1 second, capping at 30 seconds).
+
+### Client-Side URL Derivation
+
+When `VITE_API_BASE_URL` is set, the WebSocket URL is derived by:
+1. Taking the base URL (e.g., `http://localhost:3002`)
+2. Replacing the protocol: `http://` → `ws://`, `https://` → `wss://`
+3. Appending `/ws` path
+
+When `VITE_API_BASE_URL` is not set (MSW mocked mode), the WebSocket URL is derived from `window.location` using the same protocol/host transformation. This allows the dashboard to work in development without explicit configuration.
 
 ### Subscribe/Unsubscribe
 
@@ -782,6 +808,13 @@ ws://localhost:3002/ws?token=<auth-token>
 { "type": "subscribe", "channel": "project:my-project" }
 { "type": "unsubscribe", "channel": "issue:123" }
 ```
+
+### WebSocket Limits
+
+| Limit | Value |
+|-------|-------|
+| Max subscriptions per client | 100 |
+| Max message payload | 64 KB |
 
 ### Event Types
 
@@ -805,6 +838,18 @@ Issue-scoped events are broadcast to both `project:<projectId>` and `issue:<issu
 - `finding_added`, `finding_reviewed`
 - `output` (agent debug output)
 
+### Client Event Handling
+
+Dashboard clients should handle WebSocket events by reloading the relevant data:
+
+| Event Pattern | Client Action |
+|---------------|---------------|
+| `issue.*` | Reload full issues list via `loadIssues(projectId)` |
+| `label.created` | Reload labels list via `loadLabels(projectId)` |
+| `comment.created` | Reload comments for issue via `loadComments(issueId)` |
+
+This full-reload strategy ensures consistency and simplifies client state management.
+
 ---
 
 ## GitHub Webhook
@@ -819,6 +864,14 @@ Handles:
 - `pull_request` events (opened, closed, merged)
 - `check_run` events
 - `issue_comment` events
+
+---
+
+## Client Request Timeout
+
+The dashboard API client enforces a 30-second timeout on all fetch requests. This prevents the UI from hanging indefinitely if the server is slow or unreachable. The timeout is implemented using `AbortSignal.timeout(30000)` in the request wrapper.
+
+When a request times out, the client throws an `AbortError` which should be handled by the calling code.
 
 ---
 
