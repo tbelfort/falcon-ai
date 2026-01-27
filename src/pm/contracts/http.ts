@@ -1,4 +1,4 @@
-import type { IssueStage } from '../core/types.js';
+import type { AgentStatus, AgentType, IssueStage } from '../core/types.js';
 
 export interface ApiMeta {
   total?: number;
@@ -25,6 +25,7 @@ export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'done';
 export type IssuePriority = 'low' | 'medium' | 'high' | 'critical';
 export type CommentAuthorType = 'agent' | 'human';
 export type DocumentType = 'context_pack' | 'spec' | 'ai_doc' | 'other';
+export type StageMessagePriority = 'normal' | 'important';
 
 export interface ProjectDto {
   id: string;
@@ -94,4 +95,65 @@ export interface DocumentDto {
   createdBy: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface AgentDto {
+  id: string;
+  projectId: string;
+  name: string;
+  agentType: AgentType;
+  model: string;
+  status: AgentStatus;
+  currentIssueId: string | null;
+  currentStage: IssueStage | null;
+  workDir: string;
+  config: unknown;
+  totalTasksCompleted: number;
+  lastActiveAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StageMessageDto {
+  id: string;
+  issueId: string;
+  fromStage: IssueStage;
+  toStage: IssueStage;
+  fromAgent: string;
+  message: string;
+  priority: StageMessagePriority;
+  readAt: number | null;
+  readBy: string | null;
+  createdAt: number;
+}
+
+export interface WorkflowRunDto {
+  id: string;
+  issueId: string;
+  agentId: string;
+  stage: IssueStage;
+  presetId: string | null;
+  status: string;
+  startedAt: number;
+  completedAt: number | null;
+  resultSummary: string | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  costUsd: number | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  sessionId: string | null;
+  createdAt: number;
+}
+
+export interface IssueWorkflowDto {
+  runs: WorkflowRunDto[];
+}
+
+export interface AgentIssueContextDto {
+  issue: IssueDto;
+  project: ProjectDto;
+  documents: DocumentDto[];
+  stageMessages: StageMessageDto[];
+  workflow: IssueWorkflowDto;
 }

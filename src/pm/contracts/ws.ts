@@ -15,9 +15,12 @@ export type WsEventType =
   | 'issue.deleted'
   | 'comment.created'
   | 'label.created'
-  | 'document.created';
+  | 'document.created'
+  | 'agent.output';
 
-export interface WsEventBase<TType extends WsEventType, TPayload> {
+export type WsDomainEventType = Exclude<WsEventType, 'agent.output'>;
+
+export interface WsEventBase<TType extends WsDomainEventType, TPayload> {
   type: TType;
   at: number;
   projectId: string;
@@ -56,12 +59,21 @@ export type WsEvent =
   | LabelCreatedEvent
   | DocumentCreatedEvent;
 
+export interface AgentOutputPayload {
+  runId: string;
+  agentId: string;
+  issueId: string;
+  at: number;
+  line: string;
+}
+
 export type WsServerMessage =
   | { type: 'connected'; clientId: string }
   | { type: 'subscribed'; channel: string }
   | { type: 'unsubscribed'; channel: string }
   | { type: 'pong' }
-  | { type: 'event'; channel: string; event: WsEventType; data: WsEvent }
+  | { type: 'event'; channel: string; event: WsDomainEventType; data: WsEvent }
+  | { type: 'event'; channel: string; event: 'agent.output'; data: AgentOutputPayload }
   | { type: 'error'; message: string };
 
 export type WsClientMessage =

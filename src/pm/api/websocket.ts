@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
+import { defaultOutputBus, type OutputBus } from '../agents/output/output-bus.js';
 import type { WsClientMessage, WsServerMessage } from '../contracts/ws.js';
 
 type Client = { ws: WebSocket; subscriptions: Set<string> };
@@ -38,9 +39,53 @@ function isOriginAllowed(request: IncomingMessage): boolean {
   return allowedOrigins.has(origin);
 }
 
-export function createWebSocketHub() {
+export interface WebSocketHubOptions {
+  outputBus?: OutputBus;
+}
+
+export function createWebSocketHub(options: WebSocketHubOptions = {}) {
   const clients = new Map<string, Client>();
   let wss: WebSocketServer | null = null;
+  const outputBus = options.outputBus;
+  const outputSubscriptions = new Map<string, { count: number; unsubscribe: () => void }>();
+
+  function parseRunChannel(channel: string): string | null {
+    if (!channel.startsWith('run:')) {
+      return null;
+    }
+    const runId = channel.slice('run:'.length).trim();
+    return runId.length > 0 ? runId : null;
+  }
+
+  function ensureOutputSubscription(runId: string) {
+    if (!outputBus) {
+      return;
+    }
+
+    const existing = outputSubscriptions.get(runId);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+
+    const unsubscribe = outputBus.subscribe(runId, (line) => {
+      broadcast(`run:${runId}`, 'agent.output', line);
+    });
+    outputSubscriptions.set(runId, { count: 1, unsubscribe });
+  }
+
+  function releaseOutputSubscription(runId: string) {
+    const existing = outputSubscriptions.get(runId);
+    if (!existing) {
+      return;
+    }
+
+    existing.count -= 1;
+    if (existing.count <= 0) {
+      existing.unsubscribe();
+      outputSubscriptions.delete(runId);
+    }
+  }
 
   function setupWebSocket(server: HttpServer) {
     wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_PAYLOAD_BYTES });
@@ -84,6 +129,10 @@ export function createWebSocketHub() {
             return;
           }
           client.subscriptions.add(msg.channel);
+          const runId = parseRunChannel(msg.channel);
+          if (runId) {
+            ensureOutputSubscription(runId);
+          }
           ws.send(
             JSON.stringify(
               { type: 'subscribed', channel: msg.channel } satisfies WsServerMessage
@@ -92,7 +141,12 @@ export function createWebSocketHub() {
         }
 
         if (msg.type === 'unsubscribe') {
-          client.subscriptions.delete(msg.channel);
+          if (client.subscriptions.delete(msg.channel)) {
+            const runId = parseRunChannel(msg.channel);
+            if (runId) {
+              releaseOutputSubscription(runId);
+            }
+          }
           ws.send(
             JSON.stringify(
               { type: 'unsubscribed', channel: msg.channel } satisfies WsServerMessage
@@ -105,13 +159,21 @@ export function createWebSocketHub() {
         }
       });
 
-      ws.on('close', () => {
+      const cleanupClient = () => {
+        const client = clients.get(clientId);
+        if (client) {
+          for (const channel of client.subscriptions) {
+            const runId = parseRunChannel(channel);
+            if (runId) {
+              releaseOutputSubscription(runId);
+            }
+          }
+        }
         clients.delete(clientId);
-      });
+      };
 
-      ws.on('error', () => {
-        clients.delete(clientId);
-      });
+      ws.on('close', cleanupClient);
+      ws.on('error', cleanupClient);
     });
   }
 
@@ -130,12 +192,16 @@ export function createWebSocketHub() {
   function close() {
     wss?.close();
     clients.clear();
+    for (const subscription of outputSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    outputSubscriptions.clear();
   }
 
   return { setupWebSocket, broadcast, close };
 }
 
-const defaultHub = createWebSocketHub();
+const defaultHub = createWebSocketHub({ outputBus: defaultOutputBus });
 
 export const setupWebSocket = defaultHub.setupWebSocket;
 export const broadcast = defaultHub.broadcast;

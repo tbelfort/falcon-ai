@@ -87,7 +87,7 @@ describe('pm api ws events', () => {
         message.type === 'event' && message.event === 'issue.created'
     );
 
-    if (eventMessage.type !== 'event') {
+    if (eventMessage.type !== 'event' || eventMessage.event === 'agent.output') {
       throw new Error('Expected event message');
     }
 
@@ -130,7 +130,7 @@ describe('pm api ws events', () => {
     const labelMessage = await queue.waitForMessage(
       (message) => message.type === 'event' && message.event === 'label.created'
     );
-    if (labelMessage.type !== 'event') {
+    if (labelMessage.type !== 'event' || labelMessage.event === 'agent.output') {
       throw new Error('Expected event message');
     }
     expect(labelMessage.data.type).toBe('label.created');
@@ -151,7 +151,7 @@ describe('pm api ws events', () => {
     const commentMessage = await queue.waitForMessage(
       (message) => message.type === 'event' && message.event === 'comment.created'
     );
-    if (commentMessage.type !== 'event') {
+    if (commentMessage.type !== 'event' || commentMessage.event === 'agent.output') {
       throw new Error('Expected event message');
     }
     const commentEvent = commentMessage.data as { issueId: string; type: string };
@@ -168,7 +168,7 @@ describe('pm api ws events', () => {
     const documentMessage = await queue.waitForMessage(
       (message) => message.type === 'event' && message.event === 'document.created'
     );
-    if (documentMessage.type !== 'event') {
+    if (documentMessage.type !== 'event' || documentMessage.event === 'agent.output') {
       throw new Error('Expected event message');
     }
     const documentEvent = documentMessage.data as { issueId: string; type: string };
