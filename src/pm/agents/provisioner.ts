@@ -8,6 +8,17 @@ import {
 } from './fs-layout.js';
 import { cloneAgentRepository, createGit } from './git-sync.js';
 
+// Control characters that could corrupt git config or inject additional entries
+const CONTROL_CHAR_PATTERN = /[\n\r\0]/;
+
+function validateGitConfigValue(value: string, fieldName: string): void {
+  if (CONTROL_CHAR_PATTERN.test(value)) {
+    throw new Error(
+      `Invalid ${fieldName}: cannot contain newlines or control characters`
+    );
+  }
+}
+
 export interface ProvisionAgentInput {
   falconHome: string;
   projectSlug: string;
@@ -95,6 +106,10 @@ export async function provisionAgent(
   const enableSymlinks = input.enableSymlinks ?? true;
 
   await ensureProjectLayout(falconHome, projectSlug);
+
+  // Validate git config values to prevent config injection via newlines
+  validateGitConfigValue(gitUserName, 'gitUserName');
+  validateGitConfigValue(gitUserEmail, 'gitUserEmail');
 
   const { worktreePath } = await cloneAgentRepository({
     falconHome,

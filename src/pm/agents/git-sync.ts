@@ -20,8 +20,37 @@ const CREDENTIAL_PATTERNS = [
   /ghp_[A-Za-z0-9_]+/gi, // GitHub PAT tokens
   /github_pat_[A-Za-z0-9_]+/gi, // GitHub fine-grained PAT
   /gho_[A-Za-z0-9_]+/gi, // GitHub OAuth tokens
+  /ghs_[A-Za-z0-9_]+/gi, // GitHub App installation tokens
+  /ghr_[A-Za-z0-9_]+/gi, // GitHub refresh tokens
+  /glpat-[A-Za-z0-9_-]+/gi, // GitLab PAT tokens
   /Bearer\s+[A-Za-z0-9._-]+/gi, // Bearer tokens
+  /AKIA[A-Z0-9]{16}/g, // AWS access key IDs
 ];
+
+const ALLOWED_URL_PROTOCOLS = ['https:', 'http:', 'git:', 'ssh:'];
+
+function validateRepoUrl(url: string): void {
+  // Reject dangerous protocols that can execute commands
+  if (url.startsWith('ext::')) {
+    throw new Error('Invalid repository URL: ext:: protocol is not allowed');
+  }
+  if (url.startsWith('file://')) {
+    throw new Error('Invalid repository URL: file:// protocol is not allowed');
+  }
+
+  // Check for allowed protocols
+  const isAllowedProtocol = ALLOWED_URL_PROTOCOLS.some((p) => url.startsWith(p));
+  // Allow git@ SSH syntax (e.g., git@github.com:user/repo.git)
+  const isSshSyntax = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:/.test(url);
+  // Allow local absolute paths (for testing and local repos)
+  const isLocalPath = url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url);
+
+  if (!isAllowedProtocol && !isSshSyntax && !isLocalPath) {
+    throw new Error(
+      `Invalid repository URL: must use https, git, ssh protocol, git@ syntax, or local path`
+    );
+  }
+}
 
 function scrubCredentials(message: string): string {
   let scrubbed = message;
@@ -105,6 +134,12 @@ async function isShallowRepository(git: SimpleGit): Promise<boolean> {
   return result.trim() === 'true';
 }
 
+async function assertWorktreeExists(worktreePath: string): Promise<void> {
+  if (!(await pathExists(worktreePath))) {
+    throw new Error(`Agent worktree not found: ${worktreePath}`);
+  }
+}
+
 export async function cloneAgentRepository(
   input: CloneAgentInput
 ): Promise<{ worktreePath: string }> {
@@ -116,6 +151,9 @@ export async function cloneAgentRepository(
     agentName
   );
 
+  // Validate repo URL to prevent command injection via ext:: protocol
+  validateRepoUrl(repoUrl);
+
   await ensureAgentParentDirs(falconHome, projectSlug);
 
   if (await pathExists(worktreePath)) {
@@ -123,7 +161,11 @@ export async function cloneAgentRepository(
   }
 
   try {
+    // SECURITY: Disable git hooks DURING clone to prevent RCE from malicious repos.
+    // The -c option applies the config before any hooks can execute.
     await simpleGit(undefined, defaultOptions).clone(repoUrl, worktreePath, [
+      '-c',
+      'core.hooksPath=/dev/null',
       '--depth',
       '1',
       '--single-branch',
@@ -133,7 +175,7 @@ export async function cloneAgentRepository(
 
     const git = createGit(worktreePath);
 
-    // Disable git hooks to prevent RCE from malicious repos
+    // Ensure hooks remain disabled (belt-and-suspenders)
     await git.addConfig('core.hooksPath', '/dev/null');
 
     if (await isShallowRepository(git)) {
@@ -162,6 +204,8 @@ export async function checkoutIssueBranch(
     projectSlug,
     agentName
   );
+
+  await assertWorktreeExists(worktreePath);
   const git = createGit(worktreePath);
 
   try {
@@ -209,6 +253,8 @@ export async function syncIdleAgentToBase(
     projectSlug,
     agentName
   );
+
+  await assertWorktreeExists(worktreePath);
   const git = createGit(worktreePath);
 
   try {
@@ -237,6 +283,8 @@ export async function pullRebase(
     projectSlug,
     agentName
   );
+
+  await assertWorktreeExists(worktreePath);
   const git = createGit(worktreePath);
 
   try {
@@ -264,6 +312,7 @@ export async function getAgentStatus(
     projectSlug,
     agentName
   );
+  await assertWorktreeExists(worktreePath);
   return createGit(worktreePath).status();
 }
 
@@ -278,6 +327,8 @@ export async function commitAndPushAgentWork(
     projectSlug,
     agentName
   );
+
+  await assertWorktreeExists(worktreePath);
   const git = createGit(worktreePath);
 
   try {

