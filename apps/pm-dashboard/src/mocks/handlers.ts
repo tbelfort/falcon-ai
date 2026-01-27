@@ -44,11 +44,15 @@ export const handlers = [
 
   http.post('/api/issues/:id/comments', async ({ params, request }) => {
     const issueId = params.id as string;
-    const body = (await request.json()) as { content?: string; authorName?: string };
+    const body = (await request.json()) as {
+      content?: string;
+      authorType?: 'human' | 'agent';
+      authorName?: string;
+    };
     if (!body.content) {
       return failure('missing_content', 'content is required');
     }
-    const comment = addComment(issueId, body.content, body.authorName);
+    const comment = addComment(issueId, body.content, body.authorType, body.authorName);
     return success(comment);
   }),
 

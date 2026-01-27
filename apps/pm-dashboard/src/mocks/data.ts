@@ -156,12 +156,17 @@ export function listComments(issueId: string): CommentDto[] {
   return comments[issueId] ?? [];
 }
 
-export function addComment(issueId: string, content: string, authorName?: string): CommentDto {
+export function addComment(
+  issueId: string,
+  content: string,
+  authorType?: 'human' | 'agent',
+  authorName?: string,
+): CommentDto {
   const comment: CommentDto = {
     id: `comment-${commentCounter++}`,
     issueId,
     content,
-    authorType: authorName ? 'human' : 'agent',
+    authorType: authorType ?? (authorName ? 'human' : 'agent'),
     authorName: authorName ?? 'Falcon Agent',
     createdAt: Math.floor(Date.now() / 1000),
   };

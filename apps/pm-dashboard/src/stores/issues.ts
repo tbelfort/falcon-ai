@@ -17,6 +17,8 @@ type IssuesState = {
   commentsByIssueId: Record<string, AsyncState<CommentDto[]>>;
   issuesAbortController: AbortController | null;
   labelsAbortController: AbortController | null;
+  // Track true original stage per-issue to handle concurrent moves correctly
+  pendingMoveOriginalStage: Record<string, IssueStage>;
   loadIssues: (projectId: string) => Promise<void>;
   loadLabels: (projectId: string) => Promise<void>;
   loadComments: (issueId: string) => Promise<void>;
@@ -37,6 +39,7 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
   commentsByIssueId: {},
   issuesAbortController: null,
   labelsAbortController: null,
+  pendingMoveOriginalStage: {},
   loadIssues: async (projectId) => {
     const { issuesAbortController: current } = get();
     if (current) {
@@ -162,9 +165,12 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       return;
     }
 
-    const originalStage = existing.stage;
+    // Track the true original stage only if no move is pending for this issue.
+    // This prevents concurrent rapid moves from capturing stale optimistic state.
+    const { pendingMoveOriginalStage } = get();
+    const originalStage = pendingMoveOriginalStage[issueId] ?? existing.stage;
 
-    // Optimistic update
+    // Optimistic update and record the original stage
     set((state) => {
       if (state.issues.status !== 'success') return state;
       return {
@@ -173,6 +179,10 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
             issue.id === issueId ? { ...issue, stage: toStage } : issue,
           ),
         ),
+        pendingMoveOriginalStage: {
+          ...state.pendingMoveOriginalStage,
+          [issueId]: originalStage,
+        },
       };
     });
 
@@ -181,7 +191,12 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       // Re-read current state to avoid stale closure issues
       set((state) => {
         if (state.issues.status !== 'success') return state;
-        return { issues: successState(updateIssueList(state.issues.data, updated)) };
+        // Clear the pending move tracking for this issue on success
+        const { [issueId]: _, ...remainingPending } = state.pendingMoveOriginalStage;
+        return {
+          issues: successState(updateIssueList(state.issues.data, updated)),
+          pendingMoveOriginalStage: remainingPending,
+        };
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Stage transition failed';
@@ -190,9 +205,11 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       set((state) => {
         if (state.issues.status !== 'success') return state;
         const currentIssue = state.issues.data.find((issue) => issue.id === issueId);
+        // Clear the pending move tracking for this issue
+        const { [issueId]: _, ...remainingPending } = state.pendingMoveOriginalStage;
         // If WS updated the stage to something other than our target, keep the WS state
         if (currentIssue?.stage !== toStage) {
-          return state;
+          return { pendingMoveOriginalStage: remainingPending };
         }
         return {
           issues: successState(
@@ -200,6 +217,7 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
               issue.id === issueId ? { ...issue, stage: originalStage } : issue,
             ),
           ),
+          pendingMoveOriginalStage: remainingPending,
         };
       });
       onError(message);
@@ -240,5 +258,6 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     commentsByIssueId: {},
     issuesAbortController: null,
     labelsAbortController: null,
+    pendingMoveOriginalStage: {},
   }),
 }));

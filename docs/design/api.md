@@ -570,6 +570,11 @@ POST /api/issues/:issueId/comments
 }
 ```
 
+**authorType Inference Rule:**
+When `authorType` is provided, it is used directly. When omitted:
+- If `authorName` is provided: `authorType` defaults to `'human'`
+- If `authorName` is omitted: `authorType` defaults to `'agent'` and `authorName` defaults to `'Falcon Agent'`
+
 ---
 
 ## Orchestrator API
@@ -806,6 +811,13 @@ When `VITE_API_BASE_URL` is not set (MSW mocked mode), the WebSocket URL is deri
 { "type": "unsubscribe", "channel": "issue:123" }
 ```
 
+### WebSocket Limits
+
+| Limit | Value |
+|-------|-------|
+| Max subscriptions per client | 100 |
+| Max message payload | 64 KB |
+
 ### Event Types
 
 ```json
@@ -827,6 +839,18 @@ Issue-scoped events are broadcast to both `project:<projectId>` and `issue:<issu
 - `agent_assigned`, `agent_completed`
 - `finding_added`, `finding_reviewed`
 - `output` (agent debug output)
+
+### Client Event Handling
+
+Dashboard clients should handle WebSocket events by reloading the relevant data:
+
+| Event Pattern | Client Action |
+|---------------|---------------|
+| `issue.*` | Reload full issues list via `loadIssues(projectId)` |
+| `label.created` | Reload labels list via `loadLabels(projectId)` |
+| `comment.created` | Reload comments for issue via `loadComments(issueId)` |
+
+This full-reload strategy ensures consistency and simplifies client state management.
 
 ---
 

@@ -300,7 +300,7 @@ describe('KanbanBoard handleDragEnd logic', () => {
     },
   ];
 
-  it('calls onMoveIssue when dropping on a different column', () => {
+  it('renders board with provided props', () => {
     const onMoveIssue = vi.fn();
     const onSelectIssue = vi.fn();
 
@@ -312,7 +312,7 @@ describe('KanbanBoard handleDragEnd logic', () => {
       />,
     );
 
-    // Verify the board renders
+    // Verify the board renders with correct columns
     expect(screen.getByTestId('column-BACKLOG')).toBeInTheDocument();
     expect(screen.getByTestId('column-TODO')).toBeInTheDocument();
   });
