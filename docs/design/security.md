@@ -483,3 +483,86 @@ await audit({
 - [ ] Agents cannot execute arbitrary commands
 - [ ] Agent output is sanitized before display
 - [ ] Agent API requires valid agent ID in WORKING state
+
+## HTTP Security Headers
+
+The API server sets the following security headers on all responses:
+
+```typescript
+// server.ts security middleware
+app.use((_req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'");
+  next();
+});
+```
+
+### Header Explanations
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `X-Frame-Options` | `DENY` | Prevents clickjacking by disallowing embedding in iframes |
+| `X-Content-Type-Options` | `nosniff` | Prevents MIME type sniffing attacks |
+| `Content-Security-Policy` | See below | Controls allowed resource sources |
+
+### CSP Policy Breakdown
+
+- `default-src 'self'`: Default to same-origin only
+- `script-src 'self'`: Scripts from same origin only
+- `style-src 'self' 'unsafe-inline'`: Styles from same origin plus inline styles (required for Tailwind CSS utility classes)
+- `img-src 'self' data:`: Images from same origin and data URIs
+- `font-src 'self'`: Fonts from same origin only
+
+**Note on `unsafe-inline` for styles:** Tailwind CSS generates utility classes that may be applied dynamically. While `unsafe-inline` is generally discouraged, it's required for Tailwind's runtime behavior. The risk is mitigated by the localhost-only deployment model.
+
+## WebSocket Origin Configuration
+
+WebSocket connections validate the `Origin` header to prevent cross-site WebSocket hijacking attacks.
+
+### Configuration
+
+By default, WebSocket connections are allowed from localhost origins only:
+- `http://localhost:5174`
+- `http://127.0.0.1:5174`
+- `http://localhost:3000`
+- `http://127.0.0.1:3000`
+
+To allow additional origins, set the `FALCON_PM_CORS_ORIGINS` environment variable to a comma-separated list:
+
+```bash
+FALCON_PM_CORS_ORIGINS="http://localhost:5174,http://localhost:3000,https://dashboard.example.com"
+```
+
+This variable is shared between the HTTP CORS middleware and WebSocket origin validation to ensure consistent behavior.
+
+### Implementation
+
+```typescript
+// websocket.ts
+function resolveAllowedOrigins(): Set<string> {
+  const raw = process.env.FALCON_PM_CORS_ORIGINS;
+  if (!raw) {
+    return new Set(DEFAULT_LOCALHOST_ORIGINS);
+  }
+
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return new Set(origins.length > 0 ? origins : DEFAULT_LOCALHOST_ORIGINS);
+}
+
+function isOriginAllowed(request: IncomingMessage): boolean {
+  const origin = request.headers.origin;
+  // Allow connections without Origin header (non-browser clients)
+  if (!origin) return true;
+  return resolveAllowedOrigins().has(origin);
+}
+```
+
+### Non-Browser Clients
+
+Connections without an `Origin` header (e.g., from CLI tools, scripts, or server-side clients) are allowed by default. This is standard behavior since only browsers send the `Origin` header, and the primary threat model is browser-based cross-site attacks.

@@ -63,6 +63,7 @@ All timestamp fields (`createdAt`, `updatedAt`, `startedAt`, `completedAt`, WS `
 | `AGENT_BUSY` | 409 | Agent is already working |
 | `INVALID_TRANSITION` | 400 | Invalid stage transition |
 | `INTERNAL_ERROR` | 500 | Server error |
+| `invalid_json` | N/A (client-side) | Response JSON parsing failed |
 
 ---
 

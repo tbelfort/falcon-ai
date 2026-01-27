@@ -7,12 +7,26 @@ type Client = { ws: WebSocket; subscriptions: Set<string> };
 const MAX_SUBSCRIPTIONS = 100;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 
-const ALLOWED_WS_ORIGINS = new Set([
+const DEFAULT_LOCALHOST_ORIGINS = [
   'http://localhost:5174',
   'http://127.0.0.1:5174',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-]);
+];
+
+function resolveAllowedOrigins(): Set<string> {
+  const raw = process.env.FALCON_PM_CORS_ORIGINS;
+  if (!raw) {
+    return new Set(DEFAULT_LOCALHOST_ORIGINS);
+  }
+
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return new Set(origins.length > 0 ? origins : DEFAULT_LOCALHOST_ORIGINS);
+}
 
 function isOriginAllowed(request: IncomingMessage): boolean {
   const origin = request.headers.origin;
@@ -20,7 +34,8 @@ function isOriginAllowed(request: IncomingMessage): boolean {
   if (!origin) {
     return true;
   }
-  return ALLOWED_WS_ORIGINS.has(origin);
+  const allowedOrigins = resolveAllowedOrigins();
+  return allowedOrigins.has(origin);
 }
 
 export function createWebSocketHub() {
