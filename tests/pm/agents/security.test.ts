@@ -209,6 +209,48 @@ describe('security: git config injection', () => {
     ).rejects.toThrow('cannot contain newlines or control characters');
   });
 
+  it('should reject empty git user.name', async () => {
+    await expect(
+      provisionAgent({
+        falconHome,
+        projectSlug: 'test',
+        agentName: 'agent-1',
+        repoUrl: repoPath,
+        gitUserName: '',
+        gitUserEmail: 'test@example.com',
+        enableSymlinks: false,
+      })
+    ).rejects.toThrow('cannot be empty');
+  });
+
+  it('should reject whitespace-only git user.name', async () => {
+    await expect(
+      provisionAgent({
+        falconHome,
+        projectSlug: 'test',
+        agentName: 'agent-1',
+        repoUrl: repoPath,
+        gitUserName: '   ',
+        gitUserEmail: 'test@example.com',
+        enableSymlinks: false,
+      })
+    ).rejects.toThrow('cannot be empty');
+  });
+
+  it('should reject empty git user.email', async () => {
+    await expect(
+      provisionAgent({
+        falconHome,
+        projectSlug: 'test',
+        agentName: 'agent-1',
+        repoUrl: repoPath,
+        gitUserName: 'Test User',
+        gitUserEmail: '',
+        enableSymlinks: false,
+      })
+    ).rejects.toThrow('cannot be empty');
+  });
+
   it('should accept valid git user.name and email', async () => {
     const result = await provisionAgent({
       falconHome,
@@ -474,5 +516,43 @@ describe('security: dirty state checks', () => {
         branch: 'main',
       })
     ).rejects.toThrow('worktree has uncommitted changes');
+  });
+});
+
+describe('security: branch validation', () => {
+  let tempDir: string;
+  let falconHome: string;
+  let repoPath: string;
+  const projectSlug = 'test';
+  const agentName = 'agent-1';
+
+  beforeEach(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'falcon-branch-test-'));
+    falconHome = path.join(tempDir, 'falcon');
+    repoPath = path.join(tempDir, 'remote-repo');
+    await createLocalRepo(repoPath);
+
+    await cloneAgentRepository({
+      falconHome,
+      projectSlug,
+      agentName,
+      repoUrl: repoPath,
+      baseBranch: 'main',
+    });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('pullRebase should reject non-existent branch', async () => {
+    await expect(
+      pullRebase({
+        falconHome,
+        projectSlug,
+        agentName,
+        branch: 'nonexistent-branch',
+      })
+    ).rejects.toThrow('does not exist locally');
   });
 });
