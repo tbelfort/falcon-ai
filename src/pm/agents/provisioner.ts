@@ -27,9 +27,9 @@ async function ensureProjectLayout(
   const primaryPath = getPrimaryPath(falconHome, projectSlug);
   const issuesPath = getIssuesRoot(falconHome, projectSlug);
 
-  await fs.mkdir(projectRoot, { recursive: true });
-  await fs.mkdir(primaryPath, { recursive: true });
-  await fs.mkdir(issuesPath, { recursive: true });
+  await fs.mkdir(projectRoot, { recursive: true, mode: 0o700 });
+  await fs.mkdir(primaryPath, { recursive: true, mode: 0o700 });
+  await fs.mkdir(issuesPath, { recursive: true, mode: 0o700 });
 }
 
 async function safeSymlink(target: string, linkPath: string): Promise<void> {
@@ -43,7 +43,12 @@ async function safeSymlink(target: string, linkPath: string): Promise<void> {
   }
 
   try {
-    await fs.lstat(linkPath);
+    const stats = await fs.lstat(linkPath);
+    // Only skip if it's actually a symlink; if it's a regular file/dir, continue
+    if (stats.isSymbolicLink()) {
+      return;
+    }
+    // Path exists but is not a symlink - don't overwrite
     return;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -52,7 +57,7 @@ async function safeSymlink(target: string, linkPath: string): Promise<void> {
   }
 
   try {
-    await fs.mkdir(path.dirname(linkPath), { recursive: true });
+    await fs.mkdir(path.dirname(linkPath), { recursive: true, mode: 0o700 });
     await fs.symlink(target, linkPath);
   } catch (error) {
     return;

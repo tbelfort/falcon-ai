@@ -408,6 +408,16 @@ Different layers use different error patterns:
 - Git errors are wrapped to scrub credentials from messages
 - Network/timeout errors propagate as-is (no retry at this layer)
 
+**Git timeout:** All git operations use a 5-minute (300000ms) timeout configured via `simple-git`:
+
+```typescript
+const defaultOptions: Partial<SimpleGitOptions> = {
+  timeout: { block: 300000 },  // 5 minutes
+};
+```
+
+This prevents DoS via slow/malicious git servers and ensures operations don't hang indefinitely.
+
 ## Security Considerations
 
 1. **No API Keys**: Uses subscription-based auth (Claude Code, OpenAI sessions)

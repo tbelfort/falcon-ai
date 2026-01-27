@@ -566,3 +566,56 @@ function isOriginAllowed(request: IncomingMessage): boolean {
 ### Non-Browser Clients
 
 Connections without an `Origin` header (e.g., from CLI tools, scripts, or server-side clients) are allowed by default. This is standard behavior since only browsers send the `Origin` header, and the primary threat model is browser-based cross-site attacks.
+
+## Git Credential Scrubbing
+
+The git-sync layer (`src/pm/agents/git-sync.ts`) scrubs credentials from error messages before they are propagated or logged. This prevents accidental exposure of tokens in logs, error reports, or UI displays.
+
+### Scrubbed Patterns
+
+The following regex patterns are matched and replaced with `[REDACTED]`:
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| `https?://[^:]+:[^@]+@` | URLs with embedded credentials | `https://user:token@github.com` |
+| `ghp_[A-Za-z0-9_]+` | GitHub Personal Access Tokens (classic) | `ghp_xxxxxxxxxxxx` |
+| `github_pat_[A-Za-z0-9_]+` | GitHub Fine-Grained PATs | `github_pat_xxxxxxxxxxxx` |
+| `gho_[A-Za-z0-9_]+` | GitHub OAuth Tokens | `gho_xxxxxxxxxxxx` |
+| `Bearer\s+[A-Za-z0-9._-]+` | Bearer tokens in headers | `Bearer eyJhbGci...` |
+
+### Implementation
+
+```typescript
+function scrubCredentials(message: string): string {
+  let scrubbed = message;
+  for (const pattern of CREDENTIAL_PATTERNS) {
+    scrubbed = scrubbed.replace(pattern, '[REDACTED]');
+  }
+  return scrubbed;
+}
+
+function wrapGitError(error: unknown): Error {
+  if (error instanceof Error) {
+    const scrubbed = scrubCredentials(error.message);
+    if (scrubbed !== error.message) {
+      const newError = new Error(scrubbed);
+      newError.stack = error.stack ? scrubCredentials(error.stack) : undefined;
+      return newError;
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+```
+
+All git operations in `git-sync.ts` wrap errors through `wrapGitError()` before re-throwing, ensuring credentials are never exposed in error messages.
+
+## Git Hook Protection
+
+Cloned repositories can contain malicious `.git/hooks/` scripts that execute automatically on git operations (commit, checkout, merge, etc.). To prevent remote code execution (RCE) from untrusted repos:
+
+```typescript
+// After clone, disable hooks by redirecting to /dev/null
+await git.addConfig('core.hooksPath', '/dev/null');
+```
+
+This is applied immediately after `cloneAgentRepository()` completes the clone operation.

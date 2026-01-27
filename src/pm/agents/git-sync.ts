@@ -132,6 +132,10 @@ export async function cloneAgentRepository(
     ]);
 
     const git = createGit(worktreePath);
+
+    // Disable git hooks to prevent RCE from malicious repos
+    await git.addConfig('core.hooksPath', '/dev/null');
+
     if (await isShallowRepository(git)) {
       await git.fetch(['--unshallow']);
     }
@@ -173,6 +177,13 @@ export async function checkoutIssueBranch(
     if (localBranches.all.includes(issueBranch)) {
       if (localBranches.current !== issueBranch) {
         await git.checkout(issueBranch);
+      }
+      // Sync with remote to avoid stale branch (if remote branch exists)
+      try {
+        await git.fetch('origin', issueBranch);
+        await git.pull('origin', issueBranch);
+      } catch {
+        // Branch may not exist on remote yet (local-only branch) - that's OK
       }
       return { created: false, worktreePath };
     }
@@ -229,6 +240,14 @@ export async function pullRebase(
   const git = createGit(worktreePath);
 
   try {
+    // Check for uncommitted changes before checkout
+    const status = await git.status();
+    if (!status.isClean()) {
+      throw new Error(
+        'Cannot pull rebase: worktree has uncommitted changes'
+      );
+    }
+
     await git.checkout(branch);
     await git.pull('origin', branch, { '--rebase': 'true' });
   } catch (error) {
@@ -262,7 +281,21 @@ export async function commitAndPushAgentWork(
   const git = createGit(worktreePath);
 
   try {
+    // Validate files array to prevent flag injection
+    for (const file of files) {
+      if (file !== '-A' && file.startsWith('-')) {
+        throw new Error(`Invalid file path: "${file}" looks like a flag`);
+      }
+    }
+
     await git.add(files);
+
+    // Check if there are staged changes before committing
+    const status = await git.status();
+    if (status.staged.length === 0) {
+      return; // Nothing to commit
+    }
+
     await git.commit(message);
 
     if (input.branch) {
