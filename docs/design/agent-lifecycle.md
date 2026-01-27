@@ -130,6 +130,28 @@ async function setupSymlinks(agentDir: string, project: Project) {
 }
 ```
 
+## Git-Sync Layer Behaviors
+
+The `src/pm/agents/git-sync.ts` module provides low-level git operations. Key behaviors:
+
+| Function | Behavior |
+|----------|----------|
+| `cloneAgentRepository()` | Throws immediately if worktreePath exists (fail-fast, no silent overwrite) |
+| `checkoutIssueBranch()` | Checks local branches only (`branchLocal()`), not remote. Throws if worktree has uncommitted changes. |
+| `syncIdleAgentToBase()` | Throws if worktree has uncommitted changes before checkout |
+| `commitAndPushAgentWork()` | Default staging uses `git add -A` (includes deletions) when `files` not specified |
+
+**Note on reset --hard:** The git-sync layer (Phase 3) intentionally omits `reset --hard` operations. Higher-level orchestration code (shown in examples below) may use reset for recovery scenarios, but the git-sync primitives preserve uncommitted work by throwing errors instead.
+
+## Symlink Helpers
+
+The `safeSymlink()` function in `provisioner.ts` is idempotent:
+- Skips silently if target doesn't exist
+- Skips silently if link already exists
+- Swallows errors on symlink creation failure (best-effort)
+
+This allows provisioning to succeed even when symlinks cannot be created (e.g., permission issues).
+
 ## Git Operations Per State
 
 ### IDLE → CHECKOUT

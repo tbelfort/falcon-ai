@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
+import { simpleGit, type SimpleGit, type SimpleGitOptions } from 'simple-git';
 import {
   getAgentWorktreePath,
   getAgentsRoot,
@@ -10,7 +10,38 @@ import {
 const defaultOptions: Partial<SimpleGitOptions> = {
   maxConcurrentProcesses: 6,
   trimmed: true,
+  timeout: {
+    block: 300000, // 5 minutes
+  },
 };
+
+const CREDENTIAL_PATTERNS = [
+  /https?:\/\/[^:]+:[^@]+@/gi, // URLs with embedded credentials
+  /ghp_[A-Za-z0-9_]+/gi, // GitHub PAT tokens
+  /github_pat_[A-Za-z0-9_]+/gi, // GitHub fine-grained PAT
+  /gho_[A-Za-z0-9_]+/gi, // GitHub OAuth tokens
+  /Bearer\s+[A-Za-z0-9._-]+/gi, // Bearer tokens
+];
+
+function scrubCredentials(message: string): string {
+  let scrubbed = message;
+  for (const pattern of CREDENTIAL_PATTERNS) {
+    scrubbed = scrubbed.replace(pattern, '[REDACTED]');
+  }
+  return scrubbed;
+}
+
+function wrapGitError(error: unknown): Error {
+  if (error instanceof Error) {
+    const scrubbed = scrubCredentials(error.message);
+    if (scrubbed !== error.message) {
+      const newError = new Error(scrubbed);
+      newError.stack = error.stack ? scrubCredentials(error.stack) : undefined;
+      return newError;
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 export interface AgentGitContext {
   falconHome: string;
@@ -91,17 +122,27 @@ export async function cloneAgentRepository(
     throw new Error(`Agent worktree already exists: ${worktreePath}`);
   }
 
-  await simpleGit().clone(repoUrl, worktreePath, [
-    '--depth',
-    '1',
-    '--single-branch',
-    '-b',
-    baseBranch,
-  ]);
+  try {
+    await simpleGit(undefined, defaultOptions).clone(repoUrl, worktreePath, [
+      '--depth',
+      '1',
+      '--single-branch',
+      '-b',
+      baseBranch,
+    ]);
 
-  const git = createGit(worktreePath);
-  if (await isShallowRepository(git)) {
-    await git.fetch(['--unshallow']);
+    const git = createGit(worktreePath);
+    if (await isShallowRepository(git)) {
+      await git.fetch(['--unshallow']);
+    }
+  } catch (error) {
+    // Clean up partial clone on failure
+    try {
+      await fs.rm(worktreePath, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw wrapGitError(error);
   }
 
   return { worktreePath };
@@ -119,20 +160,32 @@ export async function checkoutIssueBranch(
   );
   const git = createGit(worktreePath);
 
-  const localBranches = await git.branchLocal();
-  if (localBranches.all.includes(issueBranch)) {
-    if (localBranches.current !== issueBranch) {
-      await git.checkout(issueBranch);
+  try {
+    // Check for uncommitted changes before any checkout
+    const status = await git.status();
+    if (!status.isClean()) {
+      throw new Error(
+        'Cannot checkout branch: worktree has uncommitted changes'
+      );
     }
-    return { created: false, worktreePath };
+
+    const localBranches = await git.branchLocal();
+    if (localBranches.all.includes(issueBranch)) {
+      if (localBranches.current !== issueBranch) {
+        await git.checkout(issueBranch);
+      }
+      return { created: false, worktreePath };
+    }
+
+    await git.fetch('origin', baseBranch);
+    await git.checkout(baseBranch);
+    await git.pull('origin', baseBranch);
+    await git.checkoutLocalBranch(issueBranch);
+
+    return { created: true, worktreePath };
+  } catch (error) {
+    throw wrapGitError(error);
   }
-
-  await git.fetch('origin', baseBranch);
-  await git.checkout(baseBranch);
-  await git.pull('origin', baseBranch);
-  await git.checkoutLocalBranch(issueBranch);
-
-  return { created: true, worktreePath };
 }
 
 export async function syncIdleAgentToBase(
@@ -147,9 +200,21 @@ export async function syncIdleAgentToBase(
   );
   const git = createGit(worktreePath);
 
-  await git.fetch('origin', baseBranch);
-  await git.checkout(baseBranch);
-  await git.pull('origin', baseBranch);
+  try {
+    // Check for uncommitted changes before checkout
+    const status = await git.status();
+    if (!status.isClean()) {
+      throw new Error(
+        'Cannot sync to base: worktree has uncommitted changes'
+      );
+    }
+
+    await git.fetch('origin', baseBranch);
+    await git.checkout(baseBranch);
+    await git.pull('origin', baseBranch);
+  } catch (error) {
+    throw wrapGitError(error);
+  }
 }
 
 export async function pullRebase(
@@ -163,8 +228,12 @@ export async function pullRebase(
   );
   const git = createGit(worktreePath);
 
-  await git.checkout(branch);
-  await git.pull('origin', branch, { '--rebase': 'true' });
+  try {
+    await git.checkout(branch);
+    await git.pull('origin', branch, { '--rebase': 'true' });
+  } catch (error) {
+    throw wrapGitError(error);
+  }
 }
 
 export async function getAgentStatus(
@@ -192,13 +261,17 @@ export async function commitAndPushAgentWork(
   );
   const git = createGit(worktreePath);
 
-  await git.add(files);
-  await git.commit(message);
+  try {
+    await git.add(files);
+    await git.commit(message);
 
-  if (input.branch) {
-    await git.push(remote, input.branch);
-  } else {
-    await git.push(remote);
+    if (input.branch) {
+      await git.push(remote, input.branch);
+    } else {
+      await git.push(remote);
+    }
+  } catch (error) {
+    throw wrapGitError(error);
   }
 }
 
