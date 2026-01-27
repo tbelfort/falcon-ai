@@ -156,9 +156,20 @@ export async function cloneAgentRepository(
 
   await ensureAgentParentDirs(falconHome, projectSlug);
 
-  if (await pathExists(worktreePath)) {
-    throw new Error(`Agent worktree already exists: ${worktreePath}`);
+  // Use atomic mkdir to prevent TOCTOU race condition
+  // If directory already exists, mkdir with recursive:false will throw EEXIST
+  try {
+    await fs.mkdir(worktreePath, { recursive: false, mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`Agent worktree already exists: ${worktreePath}`);
+    }
+    throw error;
   }
+
+  // Remove the directory we just created - clone will recreate it
+  // This ensures we have exclusive access to this path
+  await fs.rmdir(worktreePath);
 
   try {
     // SECURITY: Disable git hooks DURING clone to prevent RCE from malicious repos.
@@ -296,6 +307,12 @@ export async function pullRebase(
       );
     }
 
+    // Verify branch exists locally before attempting checkout
+    const localBranches = await git.branchLocal();
+    if (!localBranches.all.includes(branch)) {
+      throw new Error(`Branch "${branch}" does not exist locally`);
+    }
+
     await git.checkout(branch);
     await git.pull('origin', branch, { '--rebase': 'true' });
   } catch (error) {
@@ -349,11 +366,14 @@ export async function commitAndPushAgentWork(
 
     await git.commit(message);
 
-    if (input.branch) {
-      await git.push(remote, input.branch);
-    } else {
-      await git.push(remote);
+    // Get current branch for push if not explicitly specified
+    const pushBranch = input.branch ?? status.current;
+    if (!pushBranch) {
+      throw new Error('Cannot push: no branch specified and unable to determine current branch');
     }
+
+    // Use -u flag to set upstream tracking for new branches
+    await git.push(['-u', remote, pushBranch]);
   } catch (error) {
     throw wrapGitError(error);
   }

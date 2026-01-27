@@ -12,6 +12,9 @@ import { cloneAgentRepository, createGit } from './git-sync.js';
 const CONTROL_CHAR_PATTERN = /[\n\r\0]/;
 
 function validateGitConfigValue(value: string, fieldName: string): void {
+  if (!value || !value.trim()) {
+    throw new Error(`Invalid ${fieldName}: cannot be empty`);
+  }
   if (CONTROL_CHAR_PATTERN.test(value)) {
     throw new Error(
       `Invalid ${fieldName}: cannot contain newlines or control characters`
@@ -47,9 +50,13 @@ async function safeSymlink(target: string, linkPath: string): Promise<void> {
   try {
     await fs.stat(target);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      // Target doesn't exist - expected case, skip silently
       return;
     }
+    // Log non-ENOENT errors to aid debugging (e.g., permission denied)
+    console.warn(`safeSymlink: cannot stat target ${target}: ${code}`);
     return;
   }
 
@@ -62,7 +69,10 @@ async function safeSymlink(target: string, linkPath: string): Promise<void> {
     // Path exists but is not a symlink - don't overwrite
     return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      // Log unexpected errors checking link path
+      console.warn(`safeSymlink: cannot stat link path ${linkPath}: ${code}`);
       return;
     }
   }
@@ -71,6 +81,9 @@ async function safeSymlink(target: string, linkPath: string): Promise<void> {
     await fs.mkdir(path.dirname(linkPath), { recursive: true, mode: 0o700 });
     await fs.symlink(target, linkPath);
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // Log symlink creation failures to aid debugging
+    console.warn(`safeSymlink: failed to create symlink ${linkPath} -> ${target}: ${code}`);
     return;
   }
 }
