@@ -1,0 +1,144 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {
+  getAgentWorktreePath,
+  getIssuesRoot,
+  getPrimaryPath,
+  getProjectRoot,
+} from './fs-layout.js';
+import { cloneAgentRepository, createGit } from './git-sync.js';
+
+// Control characters that could corrupt git config or inject additional entries
+const CONTROL_CHAR_PATTERN = /[\n\r\0]/;
+
+function validateGitConfigValue(value: string, fieldName: string): void {
+  if (!value || !value.trim()) {
+    throw new Error(`Invalid ${fieldName}: cannot be empty`);
+  }
+  if (CONTROL_CHAR_PATTERN.test(value)) {
+    throw new Error(
+      `Invalid ${fieldName}: cannot contain newlines or control characters`
+    );
+  }
+}
+
+export interface ProvisionAgentInput {
+  falconHome: string;
+  projectSlug: string;
+  agentName: string;
+  repoUrl: string;
+  baseBranch?: string;
+  gitUserName: string;
+  gitUserEmail: string;
+  enableSymlinks?: boolean;
+}
+
+async function ensureProjectLayout(
+  falconHome: string,
+  projectSlug: string
+): Promise<void> {
+  const projectRoot = getProjectRoot(falconHome, projectSlug);
+  const primaryPath = getPrimaryPath(falconHome, projectSlug);
+  const issuesPath = getIssuesRoot(falconHome, projectSlug);
+
+  await fs.mkdir(projectRoot, { recursive: true, mode: 0o700 });
+  await fs.mkdir(primaryPath, { recursive: true, mode: 0o700 });
+  await fs.mkdir(issuesPath, { recursive: true, mode: 0o700 });
+}
+
+async function safeSymlink(target: string, linkPath: string): Promise<void> {
+  try {
+    await fs.stat(target);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      // Target doesn't exist - expected case, skip silently
+      return;
+    }
+    // Log non-ENOENT errors to aid debugging (e.g., permission denied)
+    console.warn(`safeSymlink: cannot stat target ${target}: ${code}`);
+    return;
+  }
+
+  try {
+    const stats = await fs.lstat(linkPath);
+    // Only skip if it's actually a symlink; if it's a regular file/dir, continue
+    if (stats.isSymbolicLink()) {
+      return;
+    }
+    // Path exists but is not a symlink - don't overwrite
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      // Log unexpected errors checking link path
+      console.warn(`safeSymlink: cannot stat link path ${linkPath}: ${code}`);
+      return;
+    }
+  }
+
+  try {
+    await fs.mkdir(path.dirname(linkPath), { recursive: true, mode: 0o700 });
+    await fs.symlink(target, linkPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // Log symlink creation failures to aid debugging
+    console.warn(`safeSymlink: failed to create symlink ${linkPath} -> ${target}: ${code}`);
+    return;
+  }
+}
+
+async function linkSharedResources(
+  falconHome: string,
+  projectSlug: string,
+  worktreePath: string
+): Promise<void> {
+  const primaryPath = getPrimaryPath(falconHome, projectSlug);
+  await safeSymlink(
+    path.join(primaryPath, 'node_modules'),
+    path.join(worktreePath, 'node_modules')
+  );
+  await safeSymlink(
+    path.join(primaryPath, '.falcon', 'CORE'),
+    path.join(worktreePath, '.falcon', 'CORE')
+  );
+}
+
+export async function provisionAgent(
+  input: ProvisionAgentInput
+): Promise<{ worktreePath: string }> {
+  const {
+    falconHome,
+    projectSlug,
+    agentName,
+    repoUrl,
+    gitUserName,
+    gitUserEmail,
+  } = input;
+  const baseBranch = input.baseBranch ?? 'main';
+  const enableSymlinks = input.enableSymlinks ?? true;
+
+  await ensureProjectLayout(falconHome, projectSlug);
+
+  // Validate git config values to prevent config injection via newlines
+  validateGitConfigValue(gitUserName, 'gitUserName');
+  validateGitConfigValue(gitUserEmail, 'gitUserEmail');
+
+  const { worktreePath } = await cloneAgentRepository({
+    falconHome,
+    projectSlug,
+    agentName,
+    repoUrl,
+    baseBranch,
+  });
+
+  const git = createGit(worktreePath);
+  await git.addConfig('user.name', gitUserName);
+  await git.addConfig('user.email', gitUserEmail);
+
+  if (enableSymlinks) {
+    await linkSharedResources(falconHome, projectSlug, worktreePath);
+  }
+
+  return { worktreePath: getAgentWorktreePath(falconHome, projectSlug, agentName) };
+}

@@ -391,6 +391,33 @@ workflowDefaults:
     bug: quick-fix
 ```
 
+## Error Handling Contract
+
+Different layers use different error patterns:
+
+| Layer | Pattern | Rationale |
+|-------|---------|-----------|
+| `src/pm/agents/*` | Throws `Error` directly | Low-level primitives; callers handle exceptions |
+| `src/pm/db/*` | Throws `Error` directly | Database operations are atomic; exceptions are appropriate |
+| `src/pm/api/routes/*` | Returns HTTP status codes | REST convention |
+| `src/pm/orchestrator/*` | Uses `ServiceResult<T>` | Orchestration needs structured success/failure for state machines |
+
+**Agent layer specifics:**
+- `cloneAgentRepository()` throws if worktree exists
+- `checkoutIssueBranch()` throws if uncommitted changes present
+- Git errors are wrapped to scrub credentials from messages
+- Network/timeout errors propagate as-is (no retry at this layer)
+
+**Git timeout:** All git operations use a 5-minute (300000ms) timeout configured via `simple-git`:
+
+```typescript
+const defaultOptions: Partial<SimpleGitOptions> = {
+  timeout: { block: 300000 },  // 5 minutes
+};
+```
+
+This prevents DoS via slow/malicious git servers and ensures operations don't hang indefinitely.
+
 ## Security Considerations
 
 1. **No API Keys**: Uses subscription-based auth (Claude Code, OpenAI sessions)
