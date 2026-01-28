@@ -34,4 +34,25 @@ describe('createPullRequest', () => {
     });
     expect(result).toEqual({ number: 42, url: 'https://github.com/acme/rocket/pull/42' });
   });
+
+  it('propagates Octokit errors', async () => {
+    const create = vi.fn().mockRejectedValue(new Error('Branch not found'));
+
+    const octokit = {
+      rest: {
+        pulls: { create },
+      },
+    } as unknown as Octokit;
+
+    await expect(
+      createPullRequest({
+        octokit,
+        repoUrl: 'https://github.com/acme/rocket',
+        title: 'Test PR',
+        body: 'Test body',
+        branchName: 'nonexistent-branch',
+        defaultBranch: 'main',
+      })
+    ).rejects.toThrow('Branch not found');
+  });
 });

@@ -4,17 +4,20 @@ export interface ParsedRepo {
 }
 
 export function parseRepoUrl(url: string): ParsedRepo {
-  const httpsMatch = url.match(/github\.com\/([^/]+)\/([^/.]+)/);
+  // Match HTTPS URLs - anchor to protocol and domain boundary
+  const httpsMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/.]+)/);
   if (httpsMatch) {
     return { owner: httpsMatch[1], repo: httpsMatch[2] };
   }
 
-  const sshMatch = url.match(/github\.com:([^/]+)\/([^/.]+)/);
+  // Match SSH URLs - anchor to git@ prefix
+  const sshMatch = url.match(/^git@github\.com:([^/]+)\/([^/.]+)/);
   if (sshMatch) {
     return { owner: sshMatch[1], repo: sshMatch[2] };
   }
 
-  const shortMatch = url.match(/^([^/]+)\/([^/]+)$/);
+  // Match short format (owner/repo) - but reject if owner contains ':'
+  const shortMatch = url.match(/^([^/:]+)\/([^/]+)$/);
   if (shortMatch) {
     return { owner: shortMatch[1], repo: shortMatch[2] };
   }

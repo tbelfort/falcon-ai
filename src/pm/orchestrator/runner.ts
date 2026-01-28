@@ -1,4 +1,5 @@
 import type { AgentRegistry } from '../agents/registry.js';
+import { scrubCredentials } from '../agents/invokers/credential-scrubber.js';
 import type { AgentDto } from '../contracts/http.js';
 import type { IssueRecord } from '../core/repos/issues.js';
 import type { PmRepos } from '../core/repos/index.js';
@@ -82,6 +83,13 @@ export class OrchestratorRunner {
         continue;
       }
       if (issue.stage === 'BACKLOG') {
+        continue;
+      }
+
+      // Skip issues with orchestration errors to prevent infinite retry loops.
+      // Issues with errors require human intervention to clear the error and retry.
+      const attrs = normalizeAttributes(issue.attributes);
+      if (attrs.orchestrationError) {
         continue;
       }
 
@@ -395,7 +403,8 @@ export class OrchestratorRunner {
 
       return updated ?? issue;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'GitHub PR creation failed';
+      const rawMessage = error instanceof Error ? error.message : 'GitHub PR creation failed';
+      const message = scrubCredentials(rawMessage);
       this.setIssueAttributes(issue, { orchestrationError: message }, now);
       return null;
     }
@@ -461,7 +470,8 @@ export class OrchestratorRunner {
         REVIEW_COMMENT_AUTHOR
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'GitHub comment update failed';
+      const rawMessage = error instanceof Error ? error.message : 'GitHub comment update failed';
+      const message = scrubCredentials(rawMessage);
       this.setIssueAttributes(issue, { orchestrationError: message }, now);
     }
   }
@@ -502,7 +512,8 @@ export class OrchestratorRunner {
       });
       this.updateIssueStage(issue, 'DONE', now);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'GitHub merge failed';
+      const rawMessage = error instanceof Error ? error.message : 'GitHub merge failed';
+      const message = scrubCredentials(rawMessage);
       this.setIssueAttributes(issue, { orchestrationError: message }, now);
     }
   }

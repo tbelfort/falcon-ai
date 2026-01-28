@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import type { PmRepos } from '../../core/repos/index.js';
 import { unixSeconds } from '../../core/utils/time.js';
@@ -30,10 +31,92 @@ function repoMatches(projectRepoUrl: string | null, webhookRepoUrl: string): boo
   }
 }
 
-export function createGitHubWebhookRouter(repos: Pick<PmRepos, 'projects' | 'issues'>) {
+/**
+ * Verifies the GitHub webhook signature using HMAC-SHA256.
+ * Returns true if signature is valid, false otherwise.
+ */
+function verifyWebhookSignature(
+  payload: string,
+  signature: string | undefined,
+  secret: string
+): boolean {
+  if (!signature) {
+    return false;
+  }
+
+  const expectedSig = `sha256=${crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex')}`;
+
+  // Use timing-safe comparison to prevent timing attacks
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Track processed webhook delivery IDs to prevent replay attacks.
+ * Uses a time-bounded cache that auto-expires entries after 5 minutes.
+ */
+const processedDeliveries = new Map<string, number>();
+const DELIVERY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function isReplayAttack(deliveryId: string | undefined): boolean {
+  if (!deliveryId) {
+    return false; // Allow if no delivery ID (backwards compatibility)
+  }
+
+  // Clean up expired entries
+  const now = Date.now();
+  for (const [id, timestamp] of processedDeliveries) {
+    if (now - timestamp > DELIVERY_CACHE_TTL_MS) {
+      processedDeliveries.delete(id);
+    }
+  }
+
+  if (processedDeliveries.has(deliveryId)) {
+    return true;
+  }
+
+  processedDeliveries.set(deliveryId, now);
+  return false;
+}
+
+export interface GitHubWebhookOptions {
+  repos: Pick<PmRepos, 'projects' | 'issues'>;
+  webhookSecret?: string;
+}
+
+export function createGitHubWebhookRouter(
+  reposOrOptions: Pick<PmRepos, 'projects' | 'issues'> | GitHubWebhookOptions
+) {
   const router = Router();
 
+  // Support both old signature (repos) and new signature (options)
+  const options: GitHubWebhookOptions =
+    'repos' in reposOrOptions ? reposOrOptions : { repos: reposOrOptions };
+  const repos = options.repos;
+  const webhookSecret = options.webhookSecret ?? process.env.GITHUB_WEBHOOK_SECRET;
+
   router.post('/', (req, res) => {
+    // Verify webhook signature if secret is configured
+    if (webhookSecret) {
+      const signature = req.header('x-hub-signature-256');
+      const rawBody = JSON.stringify(req.body);
+      if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
+        return sendSuccess(res, { ok: false, error: 'Invalid signature' });
+      }
+    }
+
+    // Check for replay attacks
+    const deliveryId = req.header('x-github-delivery');
+    if (isReplayAttack(deliveryId)) {
+      return sendSuccess(res, { ok: true }); // Acknowledge but don't process
+    }
+
     const event = req.header('x-github-event');
     if (event !== 'pull_request') {
       return sendSuccess(res, { ok: true });

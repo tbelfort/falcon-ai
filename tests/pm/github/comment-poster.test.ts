@@ -68,4 +68,84 @@ describe('upsertBotComment', () => {
     });
     expect(updateComment).not.toHaveBeenCalled();
   });
+
+  it('propagates Octokit errors from listComments', async () => {
+    const listComments = vi.fn().mockRejectedValue(new Error('API rate limit exceeded'));
+    const updateComment = vi.fn();
+    const createComment = vi.fn();
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await expect(
+      upsertBotComment({
+        octokit,
+        repoUrl: 'acme/rocket',
+        issueNumber: 5,
+        identifier: 'pr-review-summary',
+        body: 'Test',
+      })
+    ).rejects.toThrow('API rate limit exceeded');
+  });
+
+  it('propagates Octokit errors from createComment', async () => {
+    const listComments = vi.fn().mockResolvedValue({ data: [] });
+    const updateComment = vi.fn();
+    const createComment = vi.fn().mockRejectedValue(new Error('Permission denied'));
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await expect(
+      upsertBotComment({
+        octokit,
+        repoUrl: 'acme/rocket',
+        issueNumber: 5,
+        identifier: 'pr-review-summary',
+        body: 'Test',
+      })
+    ).rejects.toThrow('Permission denied');
+  });
+
+  it('propagates Octokit errors from updateComment', async () => {
+    const listComments = vi.fn().mockResolvedValue({
+      data: [{ id: 9, body: '<!-- falcon-bot:pr-review-summary -->\nOld' }],
+    });
+    const updateComment = vi.fn().mockRejectedValue(new Error('Comment not found'));
+    const createComment = vi.fn();
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await expect(
+      upsertBotComment({
+        octokit,
+        repoUrl: 'acme/rocket',
+        issueNumber: 5,
+        identifier: 'pr-review-summary',
+        body: 'Updated',
+      })
+    ).rejects.toThrow('Comment not found');
+  });
 });

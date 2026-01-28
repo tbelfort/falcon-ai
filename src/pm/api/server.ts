@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import type { PmRepos } from '../core/repos/index.js';
 import { createPmServices } from '../core/services/index.js';
 import type { WsBroadcaster } from './broadcast.js';
@@ -37,6 +38,24 @@ function resolveCorsOrigins(): string[] {
   return origins.length > 0 ? origins : DEFAULT_LOCALHOST_ORIGINS;
 }
 
+// Rate limiter for general API endpoints
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+// Stricter rate limiter for webhook endpoint
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute (1 per second average)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many webhook requests.' },
+});
+
 export function createApiServer(options: ApiServerOptions) {
   const app = express();
   const services = createPmServices(options.repos);
@@ -44,6 +63,9 @@ export function createApiServer(options: ApiServerOptions) {
 
   app.use(cors({ origin: resolveCorsOrigins() }));
   app.use(express.json({ limit: '100kb' }));
+
+  // Apply rate limiting to API routes
+  app.use('/api', apiLimiter);
 
   // Security headers
   app.use((_req, res, next) => {
@@ -59,7 +81,7 @@ export function createApiServer(options: ApiServerOptions) {
   app.use('/api/issues/:id/comments', createCommentsRouter(services, broadcaster));
   app.use('/api/issues/:id/documents', createDocumentsRouter(services, broadcaster));
   app.use('/api/agent/issues', createAgentIssuesRouter(services));
-  app.use('/api/github/webhook', createGitHubWebhookRouter(options.repos));
+  app.use('/api/github/webhook', webhookLimiter, createGitHubWebhookRouter({ repos: options.repos }));
 
   return app;
 }
