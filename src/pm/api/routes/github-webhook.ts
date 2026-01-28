@@ -180,9 +180,14 @@ export function createGitHubWebhookRouter(
 
     const payload = req.body as PullRequestWebhookPayload;
     const repoUrl = payload.repository?.html_url;
-    const prNumber = payload.pull_request?.number;
+    const rawPrNumber = payload.pull_request?.number;
     const prUrl = payload.pull_request?.html_url ?? null;
     const branchName = payload.pull_request?.head?.ref;
+
+    // Validate prNumber is a positive integer (defense-in-depth beyond HMAC gate)
+    const prNumber = typeof rawPrNumber === 'number' && Number.isInteger(rawPrNumber) && rawPrNumber > 0
+      ? rawPrNumber
+      : undefined;
 
     if (!repoUrl || !prNumber || !branchName) {
       return sendSuccess(res, { ok: true });

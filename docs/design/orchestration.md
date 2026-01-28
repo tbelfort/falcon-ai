@@ -540,6 +540,10 @@ When an orchestration error occurs (stage failure, invalid transition, GitHub AP
 
 ## Human Intervention Points
 
+### Review Comment Formatting
+
+When multiple stage messages are pending for `PR_HUMAN_REVIEW`, they are concatenated into a single PR comment body. Messages are trimmed, empty messages are filtered, and remaining messages are joined with a Markdown horizontal rule separator (`\n\n---\n\n`) for visual separation.
+
 ### PR_HUMAN_REVIEW Stage
 
 This is the primary human touchpoint:

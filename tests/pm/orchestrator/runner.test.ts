@@ -10,6 +10,10 @@ import type { GitHubAdapter } from '../../../src/pm/github/adapter.js';
 import { WorkflowExecutor } from '../../../src/pm/orchestrator/workflow-executor.js';
 import { OrchestratorRunner } from '../../../src/pm/orchestrator/runner.js';
 
+vi.mock('../../../src/pm/agents/git-sync.js', () => ({
+  syncIdleAgentToBase: vi.fn().mockResolvedValue(undefined),
+}));
+
 const FULL_PIPELINE_STAGES: IssueStage[] = [
   'BACKLOG',
   'TODO',
@@ -1079,8 +1083,6 @@ describe('orchestrator runner', () => {
 
     it('auto-merge succeeds when falconHome is configured (syncIdleAgents runs)', async () => {
       const github = createMockGitHubAdapter();
-      // Note: We set falconHome, but since registry.listAgents returns no agents for the project
-      // by default, syncIdleAgents will loop over empty array. This tests the path runs without error.
       const { repos, registry, runner } = createRunner({
         github,
         falconHome: '/tmp/falcon-test',
@@ -1093,8 +1095,19 @@ describe('orchestrator runner', () => {
         prUrl: 'https://github.com/test/repo/pull/123',
         attributes: { autoMerge: true },
       });
-      // Create an idle agent in the registry
-      createAgent(repos, registry);
+      // Register agent with matching projectSlug so listAgents returns it
+      registry.upsertAgent({
+        id: 'agent-1',
+        agentName: 'Runner Agent',
+        projectSlug: 'test-project',
+        worktreePath: '/tmp/agent-1',
+        status: 'IDLE',
+        issueId: null,
+        lastError: null,
+      });
+
+      const { syncIdleAgentToBase } = await import('../../../src/pm/agents/git-sync.js');
+      vi.mocked(syncIdleAgentToBase).mockResolvedValue(undefined);
 
       await runner.tick();
 
@@ -1102,6 +1115,96 @@ describe('orchestrator runner', () => {
       expect(github.mergePullRequest).toHaveBeenCalled();
       const issue = repos.issues.getById('issue-1');
       expect(issue?.stage).toBe('DONE');
+
+      // syncIdleAgentToBase should have been called for the idle agent
+      expect(syncIdleAgentToBase).toHaveBeenCalledWith({
+        falconHome: '/tmp/falcon-test',
+        projectSlug: 'test-project',
+        agentName: 'Runner Agent',
+        baseBranch: 'main',
+      });
+    });
+
+    it('syncIdleAgents skips non-idle agents', async () => {
+      const github = createMockGitHubAdapter();
+      const { repos, registry, runner } = createRunner({
+        github,
+        falconHome: '/tmp/falcon-test',
+      });
+
+      createTestProject(repos);
+      createTestIssue(repos, {
+        stage: 'MERGE_READY',
+        prNumber: 123,
+        prUrl: 'https://github.com/test/repo/pull/123',
+        attributes: { autoMerge: true },
+      });
+      // Register a WORKING agent (should be skipped by syncIdleAgents)
+      registry.upsertAgent({
+        id: 'agent-1',
+        agentName: 'Working Agent',
+        projectSlug: 'test-project',
+        worktreePath: '/tmp/agent-1',
+        status: 'WORKING',
+        issueId: 'issue-2',
+        lastError: null,
+      });
+
+      const { syncIdleAgentToBase } = await import('../../../src/pm/agents/git-sync.js');
+      vi.mocked(syncIdleAgentToBase).mockClear();
+      vi.mocked(syncIdleAgentToBase).mockResolvedValue(undefined);
+
+      await runner.tick();
+
+      expect(github.mergePullRequest).toHaveBeenCalled();
+      // syncIdleAgentToBase should NOT have been called for a working agent
+      expect(syncIdleAgentToBase).not.toHaveBeenCalled();
+    });
+
+    it('syncIdleAgents catches errors without failing orchestration', async () => {
+      const github = createMockGitHubAdapter();
+      const { repos, registry, runner } = createRunner({
+        github,
+        falconHome: '/tmp/falcon-test',
+      });
+
+      createTestProject(repos);
+      createTestIssue(repos, {
+        stage: 'MERGE_READY',
+        prNumber: 123,
+        prUrl: 'https://github.com/test/repo/pull/123',
+        attributes: { autoMerge: true },
+      });
+      registry.upsertAgent({
+        id: 'agent-1',
+        agentName: 'Runner Agent',
+        projectSlug: 'test-project',
+        worktreePath: '/tmp/agent-1',
+        status: 'IDLE',
+        issueId: null,
+        lastError: null,
+      });
+
+      const { syncIdleAgentToBase } = await import('../../../src/pm/agents/git-sync.js');
+      vi.mocked(syncIdleAgentToBase).mockClear();
+      vi.mocked(syncIdleAgentToBase).mockRejectedValue(new Error('git sync failed'));
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await runner.tick();
+
+      // Merge should still succeed despite sync error
+      expect(github.mergePullRequest).toHaveBeenCalled();
+      const issue = repos.issues.getById('issue-1');
+      expect(issue?.stage).toBe('DONE');
+      // Error should be logged
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to sync idle agent Runner Agent'));
+
+      // No orchestrationError should be set (sync failure is non-fatal)
+      const attrs = issue?.attributes as IssueOrchestrationAttributes | null;
+      expect(attrs?.orchestrationError).toBeUndefined();
+
+      errorSpy.mockRestore();
     });
 
     it('releases agent when issue is deleted mid-flight', async () => {

@@ -932,6 +932,15 @@ When a request times out, the client throws an `AbortError` which should be hand
 
 ---
 
+## Request Size Limits
+
+| Limit | Value | Scope |
+|-------|-------|-------|
+| JSON body size | 100kb | All routes except `/api/github/webhook` |
+| WebSocket message | 64 KB | Per message |
+
+The webhook route has its own JSON parser (for raw body capture used in signature verification) and is not subject to the global 100kb limit.
+
 ## Validation
 
 Request bodies are validated using Zod schemas in route handlers. Path and query parameters use lightweight manual checks (trimmed strings) until they are moved into shared schema validation.

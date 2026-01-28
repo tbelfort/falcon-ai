@@ -408,6 +408,23 @@ Different layers use different error patterns:
 - Git errors are wrapped to scrub credentials from messages
 - Network/timeout errors propagate as-is (no retry at this layer)
 
+### Null Update Return Handling (Warn-and-Continue)
+
+Throughout the orchestrator and webhook handlers, `repos.*.update()` may return `null` when the target entity was deleted between lookup and update (race condition). The consistent pattern is:
+
+1. Log a `console.warn()` with the operation name and entity ID
+2. Continue execution (do not throw or return error)
+
+This fail-soft approach ensures:
+- Webhook handlers always return `200 OK` to GitHub (preventing retry storms)
+- The orchestrator does not halt on transient race conditions
+- Diagnostic information is preserved in logs
+
+**Convention:** All `console.warn` messages for null update returns follow the format:
+`{functionName}: {repo}.update returned null for {entityType} {entityId}`
+
+New code that calls repo update methods SHOULD follow this pattern unless the update failure is critical to the operation's correctness (e.g., `ensurePullRequest` returns `null` to the caller when the update fails after PR creation, since returning stale data would be worse).
+
 **Git timeout:** All git operations use a 5-minute (300000ms) timeout configured via `simple-git`:
 
 ```typescript

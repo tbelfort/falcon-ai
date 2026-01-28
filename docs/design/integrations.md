@@ -167,6 +167,30 @@ ${finding.suggestion ? `**Suggestion:** ${finding.suggestion}` : ''}
 }
 ```
 
+#### Bot Identity Constants
+
+The orchestrator uses fixed identity constants for GitHub bot comment operations:
+
+| Constant | Value | Used For |
+|----------|-------|----------|
+| `REVIEW_COMMENT_IDENTIFIER` | `'pr-review-summary'` | HTML comment marker to find/update existing bot comments |
+| `REVIEW_COMMENT_AUTHOR` | `'github-bot'` | `readBy` value when marking stage messages as read |
+
+**These values MUST remain stable.** Changing the identifier would cause the system to create new comments instead of updating existing ones, resulting in duplicate bot comments on PRs. Changing the author would affect message read tracking. Both constants are defined in `src/pm/orchestrator/runner.ts`.
+
+#### Comment Marker Format
+
+Bot comments are identified using an invisible HTML comment marker prepended to the body:
+
+```
+<!-- falcon-bot:{identifier} -->
+{actual comment body}
+```
+
+The `upsertBotComment()` function searches existing PR comments for this marker using `String.includes()`. If found, the existing comment is updated; otherwise, a new comment is created.
+
+**Format is stable and MUST NOT change.** Changing the format would orphan all existing bot comments and create duplicates. The `identifier` parameter allows multiple independent bot comments per PR (e.g., `'pr-review-summary'` for review findings).
+
 #### Pagination Limits
 
 Comment pagination is capped at `MAX_COMMENT_PAGES` (20 pages = 2000 comments) to prevent memory exhaustion on PRs with spam comments. If the bot comment isn't found within this limit, a new comment is created.
@@ -208,6 +232,20 @@ The `getPullRequestStatus()` function determines whether a PR is approved for me
 | `reviewDecision` | Not available in REST API | Synthesized from review analysis: `'APPROVED'` / `'CHANGES_REQUESTED'` / `null` |
 
 **Important:** The `mergeable: null` → `false` default means the orchestrator will not auto-merge while GitHub is still computing merge status. Callers should retry after a delay if merge is blocked due to unknown mergeable state.
+
+#### Review Timestamp Handling
+
+Review timestamps from GitHub may be `null`, `undefined`, or malformed (parsing to `NaN`). The `parseReviewTimestamp()` function normalizes all invalid timestamps to `0` (Unix epoch).
+
+| Input | Output | Rationale |
+|-------|--------|-----------|
+| Valid ISO date | Parsed milliseconds | Normal case |
+| `null` / `undefined` | `0` | Missing timestamps sort to beginning |
+| Malformed string | `0` | NaN breaks `Array.sort()` comparisons |
+
+**Design decision:** Using `0` ensures invalid-timestamp reviews sort to the *beginning* of the timeline, making them effectively "oldest." This means if a reviewer's only review has a bad timestamp, it will be overwritten by any subsequent valid review. This is a deliberate fail-safe: uncertain data does not override known-good data.
+
+**Alternative considered:** Defaulting to `Date.now()` was rejected because it would make malformed reviews appear to be the most recent, potentially overriding valid earlier reviews.
 
 ### Merge Handling
 
@@ -282,6 +320,20 @@ async function waitForChecks(
   return false;  // Timeout
 }
 ```
+
+#### Merge Validation
+
+After the GitHub merge API call, the `mergePullRequest()` function explicitly validates that `data.merged === true`. If `merged` is `false` (GitHub accepted the request but did not actually merge), the function throws a `GitHubMergeError`.
+
+```typescript
+class GitHubMergeError extends Error {
+  name = 'GitHubMergeError';
+}
+```
+
+**Callers MUST handle `GitHubMergeError`.** The orchestrator's `maybeAutoMerge()` catches this error and sets `orchestrationError` on the issue.
+
+**Default merge method:** `squash` (configurable via `mergeMethod` parameter, which accepts `'merge'`, `'squash'`, or `'rebase'`).
 
 ### Webhook Handler
 

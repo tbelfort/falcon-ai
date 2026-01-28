@@ -424,7 +424,12 @@ export class OrchestratorRunner {
         updatedAt: now,
       });
 
-      return updated ?? issue;
+      if (!updated) {
+        console.warn(`ensurePullRequest: issues.update returned null for issue ${issue.id} after PR #${pr.number} was created`);
+        return null;
+      }
+
+      return updated;
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : 'GitHub PR creation failed';
       const message = scrubCredentials(rawMessage);

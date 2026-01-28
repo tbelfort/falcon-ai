@@ -457,7 +457,25 @@ const expensiveLimiter = rateLimit({
 
 app.use('/api/issues/:id/start', expensiveLimiter);
 app.use('/api/orchestrator/start', expensiveLimiter);
+
+// Webhook-specific rate limiting (external-facing endpoint)
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,  // 60 requests per minute (1 per second average)
+});
+
+app.use('/api/github/webhook', webhookLimiter);
 ```
+
+### Endpoint-Specific Rate Limits
+
+| Endpoint | Rate Limit | Rationale |
+|----------|-----------|-----------|
+| `/api/*` (general) | 100 req/min | Standard API protection |
+| `/api/github/webhook` | 60 req/min | Stricter limit for external-facing webhook endpoint; averages 1 req/sec |
+| `/api/issues/:id/start`, `/api/orchestrator/start` | 10 req/min | Expensive operations that trigger agent invocation |
+
+The webhook rate limit is intentionally stricter than the general API limit because webhooks are externally triggered (potential abuse vector), each webhook triggers database operations, and legitimate GitHub webhook traffic rarely exceeds 1/sec for a single repo.
 
 ## Logging and Auditing
 
