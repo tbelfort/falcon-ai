@@ -24,7 +24,7 @@ const DEFAULT_LOCALHOST_ORIGINS = [
   'http://127.0.0.1:3000',
 ];
 
-function resolveCorsOrigins(): string[] {
+export function resolveCorsOrigins(): string[] {
   const raw = process.env.FALCON_PM_CORS_ORIGINS;
   if (!raw) {
     return DEFAULT_LOCALHOST_ORIGINS;
@@ -62,12 +62,8 @@ export function createApiServer(options: ApiServerOptions) {
   const broadcaster = options.broadcaster ?? (() => undefined);
 
   app.use(cors({ origin: resolveCorsOrigins() }));
-  app.use(express.json({ limit: '100kb' }));
 
-  // Apply rate limiting to API routes
-  app.use('/api', apiLimiter);
-
-  // Security headers
+  // Security headers (applied to all routes)
   app.use((_req, res, next) => {
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -75,13 +71,22 @@ export function createApiServer(options: ApiServerOptions) {
     next();
   });
 
+  // Apply rate limiting to API routes
+  app.use('/api', apiLimiter);
+
+  // Webhook route - MUST be registered BEFORE global JSON parser
+  // It has its own JSON parser that captures raw body for signature verification
+  app.use('/api/github/webhook', webhookLimiter, createGitHubWebhookRouter({ repos: options.repos }));
+
+  // Global JSON parser for all other routes
+  app.use(express.json({ limit: '100kb' }));
+
   app.use('/api/projects', createProjectsRouter(services, broadcaster));
   app.use('/api/issues', createIssuesRouter(services, broadcaster));
   app.use('/api/projects/:id/labels', createLabelsRouter(services, broadcaster));
   app.use('/api/issues/:id/comments', createCommentsRouter(services, broadcaster));
   app.use('/api/issues/:id/documents', createDocumentsRouter(services, broadcaster));
   app.use('/api/agent/issues', createAgentIssuesRouter(services));
-  app.use('/api/github/webhook', webhookLimiter, createGitHubWebhookRouter({ repos: options.repos }));
 
   return app;
 }

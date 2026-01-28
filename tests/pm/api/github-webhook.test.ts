@@ -33,7 +33,8 @@ function createMockRepos(): Pick<PmRepos, 'projects' | 'issues'> {
 
 function createApp(repos: Pick<PmRepos, 'projects' | 'issues'>, webhookSecret?: string) {
   const app = express();
-  app.use(express.json());
+  // Note: Do NOT add express.json() here - the webhook router has its own JSON parser
+  // that captures raw body for signature verification
   app.use('/webhook', createGitHubWebhookRouter({ repos, webhookSecret }));
   return app;
 }
@@ -184,24 +185,26 @@ describe('github-webhook', () => {
         .set('Content-Type', 'application/json')
         .send(payload);
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ data: { ok: false, error: 'Invalid signature' } });
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: { code: 'VALIDATION_ERROR', message: 'Invalid webhook signature' } });
       expect(repos.issues.update).not.toHaveBeenCalled();
     });
 
     it('rejects requests without signature when secret is configured', async () => {
       const app = createApp(repos, webhookSecret);
+      const payload = JSON.stringify({
+        repository: { html_url: 'https://github.com/acme/rocket' },
+        pull_request: { number: 42, html_url: 'https://github.com/acme/rocket/pull/42', head: { ref: 'feature/test' } },
+      });
 
       const response = await request(app)
         .post('/webhook')
         .set('x-github-event', 'pull_request')
-        .send({
-          repository: { html_url: 'https://github.com/acme/rocket' },
-          pull_request: { number: 42, html_url: 'https://github.com/acme/rocket/pull/42', head: { ref: 'feature/test' } },
-        });
+        .set('Content-Type', 'application/json')
+        .send(payload);
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ data: { ok: false, error: 'Invalid signature' } });
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: { code: 'VALIDATION_ERROR', message: 'Invalid webhook signature' } });
     });
 
     it('accepts requests with valid signature', async () => {

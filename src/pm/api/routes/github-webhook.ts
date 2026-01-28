@@ -1,9 +1,17 @@
 import crypto from 'node:crypto';
-import { Router } from 'express';
+import { Router, json } from 'express';
+import type { Request } from 'express';
 import type { PmRepos } from '../../core/repos/index.js';
+import { createError } from '../../core/errors.js';
 import { unixSeconds } from '../../core/utils/time.js';
 import { parseRepoUrl } from '../../github/repo.js';
+import { sendError } from '../http-errors.js';
 import { sendSuccess } from '../response.js';
+
+// Extend Request to include rawBody captured by verify callback
+interface WebhookRequest extends Request {
+  rawBody?: Buffer;
+}
 
 interface PullRequestWebhookPayload {
   repository?: {
@@ -101,13 +109,23 @@ export function createGitHubWebhookRouter(
   const repos = options.repos;
   const webhookSecret = options.webhookSecret ?? process.env.GITHUB_WEBHOOK_SECRET;
 
-  router.post('/', (req, res) => {
-    // Verify webhook signature if secret is configured
+  // Use custom JSON parser that captures raw body for signature verification
+  router.use(
+    json({
+      verify: (req: WebhookRequest, _res, buf) => {
+        req.rawBody = buf;
+      },
+    })
+  );
+
+  router.post('/', (req: WebhookRequest, res) => {
+    // Verify webhook signature - required when secret is configured
     if (webhookSecret) {
       const signature = req.header('x-hub-signature-256');
-      const rawBody = JSON.stringify(req.body);
+      // Use the captured raw body for signature verification
+      const rawBody = req.rawBody?.toString('utf8') ?? '';
       if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
-        return sendSuccess(res, { ok: false, error: 'Invalid signature' });
+        return sendError(res, createError('VALIDATION_ERROR', 'Invalid webhook signature'));
       }
     }
 

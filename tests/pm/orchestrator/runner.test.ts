@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OutputBus } from '../../../src/pm/agents/output/output-bus.js';
 import { FakeAgentInvoker } from '../../../src/pm/agents/invokers/fake-agent-invoker.js';
 import { InMemoryAgentRegistry } from '../../../src/pm/agents/registry.js';
@@ -6,6 +6,7 @@ import { createInMemoryRepos } from '../../../src/pm/core/testing/in-memory-repo
 import type { IssueStage, ModelPreset } from '../../../src/pm/core/types.js';
 import type { PresetConfig } from '../../../src/pm/core/presets.js';
 import type { IssueOrchestrationAttributes } from '../../../src/pm/orchestrator/state.js';
+import type { GitHubAdapter } from '../../../src/pm/github/adapter.js';
 import { WorkflowExecutor } from '../../../src/pm/orchestrator/workflow-executor.js';
 import { OrchestratorRunner } from '../../../src/pm/orchestrator/runner.js';
 
@@ -50,6 +51,7 @@ function createRunner(options?: {
   presets?: ModelPreset[];
   clockNow?: number;
   throwOnInvoke?: boolean;
+  github?: GitHubAdapter;
 }) {
   const repos = createInMemoryRepos();
   const registry = new InMemoryAgentRegistry();
@@ -79,6 +81,7 @@ function createRunner(options?: {
     registry,
     executor,
     presets: options?.presets ?? [createFullPipelinePreset()],
+    github: options?.github,
     clock: {
       now: () => clockValue,
       sleep: async () => {},
@@ -86,6 +89,75 @@ function createRunner(options?: {
   });
 
   return { repos, registry, runner };
+}
+
+function createMockGitHubAdapter(): GitHubAdapter & { mocks: ReturnType<typeof vi.fn>[] } {
+  const createPullRequest = vi.fn().mockResolvedValue({ number: 123, url: 'https://github.com/test/repo/pull/123' });
+  const upsertBotComment = vi.fn().mockResolvedValue(undefined);
+  const mergePullRequest = vi.fn().mockResolvedValue(undefined);
+
+  return {
+    createPullRequest,
+    upsertBotComment,
+    mergePullRequest,
+    mocks: [createPullRequest, upsertBotComment, mergePullRequest],
+  };
+}
+
+function createTestProject(
+  repos: ReturnType<typeof createInMemoryRepos>,
+  overrides?: Partial<{
+    id: string;
+    repoUrl: string | null;
+    defaultBranch: string;
+  }>
+) {
+  repos.projects.create({
+    id: overrides?.id ?? 'project-1',
+    name: 'Test Project',
+    slug: 'test-project',
+    description: null,
+    repoUrl: overrides?.repoUrl ?? 'https://github.com/test/repo',
+    defaultBranch: overrides?.defaultBranch ?? 'main',
+    config: {},
+    createdAt: 0,
+    updatedAt: 0,
+  });
+}
+
+function createTestIssue(
+  repos: ReturnType<typeof createInMemoryRepos>,
+  overrides?: Partial<{
+    id: string;
+    stage: IssueStage;
+    branchName: string | null;
+    prNumber: number | null;
+    prUrl: string | null;
+    attributes: IssueOrchestrationAttributes | null;
+    description: string | null;
+  }>
+) {
+  repos.issues.create({
+    id: overrides?.id ?? 'issue-1',
+    projectId: 'project-1',
+    number: 1,
+    title: 'Test Issue',
+    description: overrides?.description ?? 'Test description',
+    status: 'in_progress' as never,
+    stage: overrides?.stage ?? 'PR_REVIEW',
+    priority: 'medium',
+    presetId: 'preset-1',
+    branchName: overrides?.branchName ?? 'feature/test',
+    prNumber: overrides?.prNumber ?? null,
+    prUrl: overrides?.prUrl ?? null,
+    assignedAgentId: null,
+    assignedHuman: null,
+    attributes: overrides?.attributes ?? null,
+    createdAt: 0,
+    updatedAt: 0,
+    startedAt: null,
+    completedAt: null,
+  });
 }
 
 function createAgent(repos: ReturnType<typeof createInMemoryRepos>, registry: InMemoryAgentRegistry) {
@@ -352,6 +424,150 @@ describe('orchestrator runner', () => {
       await runner.start();
 
       expect(tickCount).toBe(2);
+    });
+  });
+
+  describe('GitHub integration', () => {
+    describe('ensurePullRequest', () => {
+      it('creates PR when issue is at PR_REVIEW stage', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos);
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.createPullRequest).toHaveBeenCalledWith({
+          repoUrl: 'https://github.com/test/repo',
+          title: 'Test Issue',
+          body: 'Test description',
+          branchName: 'feature/test',
+          defaultBranch: 'main',
+        });
+
+        const updated = repos.issues.getById('issue-1');
+        expect(updated?.prNumber).toBe(123);
+        expect(updated?.prUrl).toBe('https://github.com/test/repo/pull/123');
+      });
+
+      it('skips PR creation when issue already has prNumber and prUrl', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, { prNumber: 456, prUrl: 'https://github.com/test/repo/pull/456' });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.createPullRequest).not.toHaveBeenCalled();
+      });
+
+      it('sets orchestrationError when project has no repoUrl', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos, { repoUrl: null });
+        createTestIssue(repos);
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBe('Project repoUrl is required to create PRs');
+      });
+
+      it('scrubs credentials from GitHub error messages', async () => {
+        const github = createMockGitHubAdapter();
+        github.createPullRequest = vi.fn().mockRejectedValue(
+          new Error('Authentication failed for https://ghp_secret123@github.com')
+        );
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos);
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).not.toContain('ghp_secret123');
+        expect(attrs.orchestrationError).toContain('[REDACTED]');
+      });
+    });
+
+    describe('maybeAutoMerge', () => {
+      it('merges PR when autoMerge attribute is true', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.mergePullRequest).toHaveBeenCalledWith({
+          repoUrl: 'https://github.com/test/repo',
+          prNumber: 123,
+        });
+
+        const updated = repos.issues.getById('issue-1');
+        expect(updated?.stage).toBe('DONE');
+      });
+
+      it('skips merge when autoMerge attribute is false', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: false },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.mergePullRequest).not.toHaveBeenCalled();
+      });
+
+      it('sets orchestrationError on merge failure', async () => {
+        const github = createMockGitHubAdapter();
+        github.mergePullRequest = vi.fn().mockRejectedValue(
+          new Error('Merge conflict detected')
+        );
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBe('Merge conflict detected');
+        expect(updated?.stage).toBe('MERGE_READY'); // Stage unchanged on error
+      });
     });
   });
 });

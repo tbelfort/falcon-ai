@@ -148,4 +148,101 @@ describe('upsertBotComment', () => {
       })
     ).rejects.toThrow('Comment not found');
   });
+
+  it('paginates through comments to find existing bot comment on page 2', async () => {
+    // First page: 100 comments, none matching
+    const page1Comments = Array.from({ length: 100 }, (_, i) => ({
+      id: i + 1,
+      body: `Comment ${i + 1}`,
+    }));
+
+    // Second page: bot comment is here
+    const page2Comments = [
+      { id: 101, body: '<!-- falcon-bot:pr-review-summary -->\nExisting' },
+      { id: 102, body: 'Another comment' },
+    ];
+
+    const listComments = vi
+      .fn()
+      .mockResolvedValueOnce({ data: page1Comments })
+      .mockResolvedValueOnce({ data: page2Comments });
+    const updateComment = vi.fn().mockResolvedValue({ data: {} });
+    const createComment = vi.fn();
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await upsertBotComment({
+      octokit,
+      repoUrl: 'acme/rocket',
+      issueNumber: 5,
+      identifier: 'pr-review-summary',
+      body: 'Updated on page 2',
+    });
+
+    expect(listComments).toHaveBeenCalledTimes(2);
+    expect(listComments).toHaveBeenNthCalledWith(1, {
+      owner: 'acme',
+      repo: 'rocket',
+      issue_number: 5,
+      per_page: 100,
+      page: 1,
+    });
+    expect(listComments).toHaveBeenNthCalledWith(2, {
+      owner: 'acme',
+      repo: 'rocket',
+      issue_number: 5,
+      per_page: 100,
+      page: 2,
+    });
+    expect(updateComment).toHaveBeenCalledWith({
+      owner: 'acme',
+      repo: 'rocket',
+      comment_id: 101,
+      body: '<!-- falcon-bot:pr-review-summary -->\nUpdated on page 2',
+    });
+    expect(createComment).not.toHaveBeenCalled();
+  });
+
+  it('stops pagination when fewer than per_page comments returned', async () => {
+    // Page with fewer than 100 comments - indicates last page
+    const comments = Array.from({ length: 50 }, (_, i) => ({
+      id: i + 1,
+      body: `Comment ${i + 1}`,
+    }));
+
+    const listComments = vi.fn().mockResolvedValue({ data: comments });
+    const createComment = vi.fn().mockResolvedValue({ data: {} });
+    const updateComment = vi.fn();
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await upsertBotComment({
+      octokit,
+      repoUrl: 'acme/rocket',
+      issueNumber: 5,
+      identifier: 'pr-review-summary',
+      body: 'New comment',
+    });
+
+    // Should only call listComments once since < 100 comments returned
+    expect(listComments).toHaveBeenCalledTimes(1);
+    expect(createComment).toHaveBeenCalled();
+    expect(updateComment).not.toHaveBeenCalled();
+  });
 });

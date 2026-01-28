@@ -18,14 +18,24 @@ export function loadGitHubToken(env: NodeJS.ProcessEnv = process.env): string {
   return token;
 }
 
-export function createOctokit(token: string): Octokit {
-  return new Octokit({
+export interface OctokitConfig {
+  auth: string;
+  userAgent: string;
+  request: { timeout: number };
+}
+
+export function buildOctokitConfig(token: string): OctokitConfig {
+  return {
     auth: token,
     userAgent: DEFAULT_GITHUB_USER_AGENT,
     request: {
       timeout: DEFAULT_REQUEST_TIMEOUT_MS,
     },
-  });
+  };
+}
+
+export function createOctokit(token: string): Octokit {
+  return new Octokit(buildOctokitConfig(token));
 }
 
 export function createOctokitFromEnv(env: NodeJS.ProcessEnv = process.env): Octokit {

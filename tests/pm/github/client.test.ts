@@ -4,6 +4,7 @@ import {
   MissingGitHubTokenError,
   createOctokit,
   createOctokitFromEnv,
+  buildOctokitConfig,
   DEFAULT_GITHUB_USER_AGENT,
   DEFAULT_REQUEST_TIMEOUT_MS,
 } from '../../../src/pm/github/client.js';
@@ -55,11 +56,44 @@ describe('loadGitHubToken', () => {
   });
 });
 
+describe('buildOctokitConfig', () => {
+  it('builds config with auth token', () => {
+    const config = buildOctokitConfig('ghp_test123');
+    expect(config.auth).toBe('ghp_test123');
+  });
+
+  it('includes correct userAgent', () => {
+    const config = buildOctokitConfig('test-token');
+    expect(config.userAgent).toBe('falcon-pm/1.0.0');
+    expect(config.userAgent).toBe(DEFAULT_GITHUB_USER_AGENT);
+  });
+
+  it('includes request timeout', () => {
+    const config = buildOctokitConfig('test-token');
+    expect(config.request.timeout).toBe(30000);
+    expect(config.request.timeout).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+  });
+
+  it('uses provided token without modification', () => {
+    const token = 'gho_exactToken123';
+    const config = buildOctokitConfig(token);
+    expect(config.auth).toBe(token);
+  });
+});
+
 describe('createOctokit', () => {
   it('creates Octokit with provided token', () => {
     const octokit = createOctokit('test-token');
     expect(octokit).toBeDefined();
     expect(octokit.rest).toBeDefined();
+  });
+
+  it('creates functional Octokit instance', () => {
+    const octokit = createOctokit('test-token');
+    // Verify key REST API namespaces are available
+    expect(octokit.rest.repos).toBeDefined();
+    expect(octokit.rest.pulls).toBeDefined();
+    expect(octokit.rest.issues).toBeDefined();
   });
 });
 
