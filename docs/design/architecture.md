@@ -75,10 +75,14 @@ Agent management infrastructure:
 
 ### falcon-github
 
-GitHub integration:
+GitHub integration via the `GitHubAdapter` interface (`src/pm/github/adapter.ts`), which provides dependency injection for the Octokit client. Orchestrator code imports the interface for testability; `OctokitGitHubAdapter` is the production implementation that delegates to standalone functions:
+- **Adapter** (`src/pm/github/adapter.ts`): `GitHubAdapter` interface + `OctokitGitHubAdapter` implementation
+- **Client** (`src/pm/github/client.ts`): Octokit construction, token loading
 - **PR Creator** (`src/pm/github/pr-creator.ts`): Create pull requests
 - **Comment Poster** (`src/pm/github/comment-poster.ts`): Post findings
 - **Merger** (`src/pm/github/merger.ts`): Handle merge operations
+- **PR Status** (`src/pm/github/pr-status.ts`): Check approval and mergeable status
+- **Repo** (`src/pm/github/repo.ts`): Parse GitHub repository URLs
 
 ## Directory Structure
 

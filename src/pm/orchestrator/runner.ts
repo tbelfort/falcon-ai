@@ -425,7 +425,11 @@ export class OrchestratorRunner {
       });
 
       if (!updated) {
-        console.warn(`ensurePullRequest: issues.update returned null for issue ${issue.id} after PR #${pr.number} was created`);
+        this.setIssueAttributes(
+          issue,
+          { orchestrationError: `DB update failed after PR #${pr.number} was created. PR exists on GitHub but is not tracked locally.` },
+          now
+        );
         return null;
       }
 
@@ -560,6 +564,12 @@ export class OrchestratorRunner {
       }
 
       if (!prStatus.isMergeable) {
+        // If CI checks are still pending ("blocked" or "behind"), skip silently
+        // and retry on the next tick instead of setting a permanent error.
+        const transientStates = new Set(['blocked', 'behind', 'unstable']);
+        if (transientStates.has(prStatus.mergeableState ?? '')) {
+          return;
+        }
         this.setIssueAttributes(
           issue,
           { orchestrationError: 'PR is not mergeable. State: ' + (prStatus.mergeableState ?? 'unknown') },

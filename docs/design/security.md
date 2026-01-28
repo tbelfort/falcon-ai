@@ -688,6 +688,23 @@ Agent Process → JSON Events → scrubCredentials() → OutputBus → WebSocket
 
 This ensures credentials are never stored in logs, databases, or transmitted over WebSockets, regardless of where the output ultimately ends up.
 
+## Orchestrator Error Credential Scrubbing
+
+The orchestrator runner (`runner.ts`) scrubs credentials from error messages **before** storing them in `orchestrationError` issue attributes. This is a second scrubbing boundary, distinct from the agent output boundary:
+
+```
+GitHub API Error → error.message → scrubCredentials() → orchestrationError attribute → Database → Dashboard/API
+                                    ↑
+                              SCRUBBING BOUNDARY
+```
+
+This applies to all orchestrator methods that catch GitHub-related errors:
+- `ensurePullRequest()` — PR creation failures
+- `maybePostReviewComment()` — Comment posting failures
+- `maybeAutoMerge()` — Merge/status check failures
+
+**Convention for new runner methods:** Any orchestrator code that catches errors from external services and stores the message in `orchestrationError` MUST call `scrubCredentials()` before storage. Error messages from external APIs may contain embedded credentials.
+
 ## Git Hook Protection
 
 Cloned repositories can contain malicious `.git/hooks/` scripts that execute automatically on git operations (commit, checkout, merge, etc.). To prevent remote code execution (RCE) from untrusted repos, hooks are disabled **during** the clone operation itself:
@@ -891,6 +908,20 @@ The webhook handler tracks delivery IDs to prevent replay attacks:
 **LRU eviction:** When the cache reaches its 10,000 entry limit, it evicts the oldest 10% of entries (1,000 entries) in a single batch. This amortizes eviction overhead while keeping memory bounded. The alternative of evicting one entry at a time would cause lock contention under high load.
 
 **Limitation:** The replay cache is in-memory only and is lost on server restart. For production deployments with high availability requirements, consider implementing persistent delivery tracking.
+
+### Webhook Payload Validation
+
+Beyond HMAC signature verification, the webhook handler performs defense-in-depth validation on payload fields before processing:
+
+| Field | Validation | On Failure |
+|-------|-----------|------------|
+| `pull_request.number` | Must be a `number`, integer, and positive (`> 0`) | Treated as `undefined`; webhook silently acknowledged without processing |
+| `repository.html_url` | Must be present and non-empty | Webhook silently acknowledged without processing |
+| `pull_request.head.ref` | Must be present and non-empty | Webhook silently acknowledged without processing |
+
+**Design decision:** Invalid fields cause the webhook to be silently acknowledged (`200 OK`) rather than rejected with an error. This prevents GitHub from retrying malformed deliveries and matches the pattern used for unrecognized events.
+
+**Convention for new handlers:** All numeric payload fields from external sources MUST be validated as positive integers before use, even behind the HMAC gate.
 
 ### Supported Webhook Events
 

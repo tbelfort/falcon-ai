@@ -502,12 +502,10 @@ describe('isReplayAttack (unit tests)', () => {
       expect(repoMatches('https://github.com/acme/rocket', 'not-a-url')).toBe(false);
     });
 
-    it('handles case sensitivity correctly (GitHub is case-insensitive)', () => {
-      // Note: GitHub treats owner/repo as case-insensitive, but our regex is case-sensitive
-      // This tests current behavior - owner/repo must match exactly
+    it('matches case-insensitively (GitHub treats owner/repo as case-insensitive)', () => {
       expect(
         repoMatches('https://github.com/Acme/Rocket', 'https://github.com/acme/rocket')
-      ).toBe(false);
+      ).toBe(true);
     });
   });
 });

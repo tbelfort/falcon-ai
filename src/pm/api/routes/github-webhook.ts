@@ -34,7 +34,8 @@ export function repoMatches(projectRepoUrl: string | null, webhookRepoUrl: strin
   try {
     const project = parseRepoUrl(projectRepoUrl);
     const webhook = parseRepoUrl(webhookRepoUrl);
-    return project.owner === webhook.owner && project.repo === webhook.repo;
+    return project.owner.toLowerCase() === webhook.owner.toLowerCase()
+      && project.repo.toLowerCase() === webhook.repo.toLowerCase();
   } catch {
     return false;
   }

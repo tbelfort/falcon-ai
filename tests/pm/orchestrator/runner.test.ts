@@ -670,6 +670,64 @@ describe('orchestrator runner', () => {
         expect(updated?.stage).toBe('MERGE_READY');
       });
 
+      it('skips silently when mergeableState is blocked (CI pending)', async () => {
+        const github = createMockGitHubAdapter();
+        github.getPullRequestStatus = vi.fn().mockResolvedValue({
+          isApproved: true,
+          isMergeable: false,
+          mergeableState: 'blocked',
+          reviewDecision: 'APPROVED'
+        });
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.mergePullRequest).not.toHaveBeenCalled();
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        // No orchestrationError — issue should be retried on next tick
+        expect(attrs.orchestrationError).toBeUndefined();
+        expect(updated?.stage).toBe('MERGE_READY');
+      });
+
+      it('skips silently when mergeableState is behind (needs rebase)', async () => {
+        const github = createMockGitHubAdapter();
+        github.getPullRequestStatus = vi.fn().mockResolvedValue({
+          isApproved: true,
+          isMergeable: false,
+          mergeableState: 'behind',
+          reviewDecision: 'APPROVED'
+        });
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.mergePullRequest).not.toHaveBeenCalled();
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBeUndefined();
+      });
+
       it('sets orchestrationError when issue has no branchName', async () => {
         const github = createMockGitHubAdapter();
         const { repos, registry, runner } = createRunner({ github });
