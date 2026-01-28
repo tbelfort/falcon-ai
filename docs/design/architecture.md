@@ -493,3 +493,50 @@ The pm-dashboard has several configurable defaults:
 | WebSocket URL | Derived from API base | Protocol swapped (http→ws, https→wss), `/ws` appended |
 
 **MSW Mocked Mode:** When `VITE_API_BASE_URL` is not set (or empty), the dashboard activates MSW (Mock Service Worker) to provide mock API responses. This enables frontend development without a running backend. WebSocket connections are disabled in this mode.
+
+### Repository Implementation Strategy
+
+The system uses a repository abstraction pattern with multiple implementation tiers for phased development:
+
+| Type | Location | Purpose | Behavior |
+|------|----------|---------|----------|
+| **Stubs (Db*Repo)** | `src/pm/db/repos/*.ts` | Placeholder for unimplemented DB repos | Throws `Error('ClassName.methodName not implemented')` |
+| **In-Memory** | `src/pm/core/testing/in-memory-repos.ts` | Testing and API development | Fully functional with Map-based storage |
+| **Real DB** | `src/pm/db/repos/*.ts` (when implemented) | Production persistence | Uses Drizzle ORM with SQLite |
+
+**When to use each:**
+
+- **Stubs:** When adding a new repo interface that will be DB-backed but the implementation is deferred. Stubs allow code to compile and type-check without full implementation. The API server can start successfully with stubs present.
+- **In-Memory:** For tests and development when DB persistence is not required. The API server defaults to in-memory repos during development (`main.ts` uses `createInMemoryRepos()`).
+- **Real DB:** When the feature requires persistence. Convert stubs to real Drizzle implementations when the DB schema is ready.
+
+**Factory functions:**
+
+| Factory | Location | Returns |
+|---------|----------|---------|
+| `createDbRepos()` | `src/pm/db/repos/index.ts` | All DB-backed repos (some may be stubs) |
+| `createInMemoryRepos()` | `src/pm/core/testing/in-memory-repos.ts` | All in-memory repos (always fully functional) |
+
+**Factory behavior:**
+
+- `createDbRepos()` always succeeds and returns a complete `PmRepos` object
+- Unimplemented repos are returned as stub instances (not null or undefined)
+- Errors occur at method invocation time, not at factory call time
+- This allows code to compile and type-check even when some repos are stubs
+
+**Stub error format:**
+
+All stub methods follow a consistent error pattern:
+
+```typescript
+export class DbExampleRepo implements ExampleRepo {
+  methodName(_unusedParam: string): ReturnType {
+    throw new Error('DbExampleRepo.methodName not implemented');
+  }
+}
+```
+
+- Method parameters are prefixed with underscore (`_param`) to satisfy TypeScript's `noUnusedParameters` rule
+- Error messages follow the pattern: `ClassName.methodName not implemented`
+
+**Implication:** Code using `createDbRepos()` should not assume all repos are fully implemented. For guaranteed functionality during development and testing, use `createInMemoryRepos()`.
