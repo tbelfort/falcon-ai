@@ -10,8 +10,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveFailureMode } from '../../src/attribution/failure-mode-resolver.js';
-import type { EvidenceBundle } from '../../src/schemas/index.js';
+import { resolveFailureMode } from '../../../src/guardrail/attribution/failure-mode-resolver.js';
+import type { EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 /**
  * Base evidence for tests - represents a common case.

@@ -6,8 +6,8 @@ import { describe, it, expect } from 'vitest';
 import {
   validateTaskProfile,
   extractConstraintsFromMetadata,
-} from '../../src/injection/task-profile-validator.js';
-import type { TaskProfile } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/injection/task-profile-validator.js';
+import type { TaskProfile } from '../../../src/guardrail/schemas/index.js';
 
 describe('validateTaskProfile', () => {
   const baseProfile: TaskProfile = {

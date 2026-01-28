@@ -7,14 +7,14 @@ import Database from 'better-sqlite3';
 import {
   processProvisionalAlertExpiry,
   checkForEarlyPromotion,
-} from '../../src/evolution/provisional-alert-processor.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { ProvisionalAlertRepository } from '../../src/storage/repositories/provisional-alert.repo.js';
-import { PatternOccurrenceRepository } from '../../src/storage/repositories/pattern-occurrence.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import type { DocFingerprint, EvidenceBundle } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/evolution/provisional-alert-processor.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { ProvisionalAlertRepository } from '../../../src/guardrail/storage/repositories/provisional-alert.repo.js';
+import { PatternOccurrenceRepository } from '../../../src/guardrail/storage/repositories/pattern-occurrence.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import type { DocFingerprint, EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 /**
  * Helper to create a future expiry date (14 days from now).

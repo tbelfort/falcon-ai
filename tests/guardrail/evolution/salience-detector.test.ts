@@ -5,14 +5,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
-import { detectSalienceIssues } from '../../src/evolution/salience-detector.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import { PatternOccurrenceRepository } from '../../src/storage/repositories/pattern-occurrence.repo.js';
-import { SalienceIssueRepository } from '../../src/storage/repositories/salience-issue.repo.js';
-import type { DocFingerprint, EvidenceBundle } from '../../src/schemas/index.js';
+import { detectSalienceIssues } from '../../../src/guardrail/evolution/salience-detector.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import { PatternOccurrenceRepository } from '../../../src/guardrail/storage/repositories/pattern-occurrence.repo.js';
+import { SalienceIssueRepository } from '../../../src/guardrail/storage/repositories/salience-issue.repo.js';
+import type { DocFingerprint, EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 describe('detectSalienceIssues', () => {
   let db: Database.Database;

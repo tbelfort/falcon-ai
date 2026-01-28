@@ -9,8 +9,8 @@ import {
   formatMetricsCsv,
   getMetricsCsvHeaders,
   formatMetricsSummary,
-} from '../../src/metrics/reporter.js';
-import type { MetricsSnapshot } from '../../src/metrics/collector.js';
+} from '../../../src/guardrail/metrics/reporter.js';
+import type { MetricsSnapshot } from '../../../src/guardrail/metrics/collector.js';
 
 describe('formatMetricsReport', () => {
   const mockMetrics: MetricsSnapshot = {

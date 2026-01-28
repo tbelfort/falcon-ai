@@ -9,9 +9,9 @@ import {
   getCategoryPrecedence,
   resolveConflicts,
   type InjectedWarning,
-} from '../../src/injection/selector.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import type { TaskProfile, Touch, PatternDefinition, DerivedPrinciple } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/injection/selector.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import type { TaskProfile, Touch, PatternDefinition, DerivedPrinciple } from '../../../src/guardrail/schemas/index.js';
 
 describe('selector', () => {
   let db: Database.Database;

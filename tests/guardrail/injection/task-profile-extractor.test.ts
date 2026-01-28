@@ -5,7 +5,7 @@ import {
   extractTouches,
   extractTechnologies,
   extractTaskTypes,
-} from '../../src/injection/task-profile-extractor.js';
+} from '../../../src/guardrail/injection/task-profile-extractor.js';
 
 describe('extractTaskProfileFromIssue', () => {
   it('extracts database touches from SQL description', () => {

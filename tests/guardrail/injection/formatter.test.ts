@@ -8,9 +8,9 @@ import {
   formatWarningsForInjection,
   formatWarningsSummary,
   formatInjectionSummary,
-} from '../../src/injection/formatter.js';
-import type { InjectedWarning, InjectedAlert, InjectionResult } from '../../src/injection/selector.js';
-import type { PatternDefinition, DerivedPrinciple, ProvisionalAlert } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/injection/formatter.js';
+import type { InjectedWarning, InjectedAlert, InjectionResult } from '../../../src/guardrail/injection/selector.js';
+import type { PatternDefinition, DerivedPrinciple, ProvisionalAlert } from '../../../src/guardrail/schemas/index.js';
 
 describe('formatter', () => {
   const basePattern: PatternDefinition = {

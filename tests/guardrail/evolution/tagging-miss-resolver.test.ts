@@ -9,12 +9,12 @@ import {
   resolveTaggingMiss,
   getTaggingMissSummary,
   countOccurrences,
-} from '../../src/evolution/tagging-miss-resolver.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import { TaggingMissRepository } from '../../src/storage/repositories/tagging-miss.repo.js';
+} from '../../../src/guardrail/evolution/tagging-miss-resolver.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import { TaggingMissRepository } from '../../../src/guardrail/storage/repositories/tagging-miss.repo.js';
 
 describe('analyzeTaggingMisses', () => {
   let db: Database.Database;

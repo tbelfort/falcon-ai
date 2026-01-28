@@ -4,13 +4,13 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { onDocumentChange, type DocChange } from '../../src/evolution/doc-change-watcher.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import { PatternOccurrenceRepository } from '../../src/storage/repositories/pattern-occurrence.repo.js';
-import type { DocFingerprint, EvidenceBundle } from '../../src/schemas/index.js';
+import { onDocumentChange, type DocChange } from '../../../src/guardrail/evolution/doc-change-watcher.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import { PatternOccurrenceRepository } from '../../../src/guardrail/storage/repositories/pattern-occurrence.repo.js';
+import type { DocFingerprint, EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 describe('onDocumentChange', () => {
   let db: Database.Database;

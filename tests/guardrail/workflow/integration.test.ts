@@ -7,24 +7,24 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import { PatternOccurrenceRepository } from '../../src/storage/repositories/pattern-occurrence.repo.js';
-import { InjectionLogRepository } from '../../src/storage/repositories/injection-log.repo.js';
-import { ProvisionalAlertRepository } from '../../src/storage/repositories/provisional-alert.repo.js';
-import { TaggingMissRepository } from '../../src/storage/repositories/tagging-miss.repo.js';
-import { KillSwitchService } from '../../src/services/kill-switch.service.js';
-import { onPRReviewComplete } from '../../src/workflow/pr-review-hook.js';
-import { updateAdherence } from '../../src/workflow/adherence-updater.js';
-import { checkForTaggingMisses } from '../../src/workflow/tagging-miss-checker.js';
-import { checkAndPromoteAlert } from '../../src/workflow/provisional-alert-promoter.js';
-import { validateTaskProfile } from '../../src/injection/task-profile-validator.js';
-import { AttributionOrchestrator } from '../../src/attribution/orchestrator.js';
-import { createMockAttributionAgent } from '../../src/attribution/agent.js';
-import type { DocFingerprint, EvidenceBundle } from '../../src/schemas/index.js';
-import type { PRReviewResult, DocumentContext, ConfirmedFinding } from '../../src/workflow/pr-review-hook.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import { PatternOccurrenceRepository } from '../../../src/guardrail/storage/repositories/pattern-occurrence.repo.js';
+import { InjectionLogRepository } from '../../../src/guardrail/storage/repositories/injection-log.repo.js';
+import { ProvisionalAlertRepository } from '../../../src/guardrail/storage/repositories/provisional-alert.repo.js';
+import { TaggingMissRepository } from '../../../src/guardrail/storage/repositories/tagging-miss.repo.js';
+import { KillSwitchService } from '../../../src/guardrail/services/kill-switch.service.js';
+import { onPRReviewComplete } from '../../../src/guardrail/workflow/pr-review-hook.js';
+import { updateAdherence } from '../../../src/guardrail/workflow/adherence-updater.js';
+import { checkForTaggingMisses } from '../../../src/guardrail/workflow/tagging-miss-checker.js';
+import { checkAndPromoteAlert } from '../../../src/guardrail/workflow/provisional-alert-promoter.js';
+import { validateTaskProfile } from '../../../src/guardrail/injection/task-profile-validator.js';
+import { AttributionOrchestrator } from '../../../src/guardrail/attribution/orchestrator.js';
+import { createMockAttributionAgent } from '../../../src/guardrail/attribution/agent.js';
+import type { DocFingerprint, EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
+import type { PRReviewResult, DocumentContext, ConfirmedFinding } from '../../../src/guardrail/workflow/pr-review-hook.js';
 
 describe('Phase 4 Integration', () => {
   let db: Database.Database;

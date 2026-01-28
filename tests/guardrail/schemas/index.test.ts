@@ -24,7 +24,7 @@ import {
   FindingCategorySchema,
   SeveritySchema,
   TouchSchema,
-} from '../../src/schemas/index.js';
+} from '../../../src/guardrail/schemas/index.js';
 
 describe('Scope Schema', () => {
   it('accepts global scope', () => {

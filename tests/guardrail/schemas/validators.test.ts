@@ -15,7 +15,7 @@ import {
   computeContentHash,
   computePatternKey,
   computeLocationHash,
-} from '../../src/schemas/validators.js';
+} from '../../../src/guardrail/schemas/validators.js';
 
 describe('Severity Helpers', () => {
   it('severityRank returns correct ranks', () => {

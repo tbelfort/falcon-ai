@@ -4,8 +4,8 @@ import {
   computeInjectionPriority,
   computePatternStats,
   type PatternStats,
-} from '../../src/injection/confidence.js';
-import type { PatternDefinition, TaskProfile, Touch, Severity } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/injection/confidence.js';
+import type { PatternDefinition, TaskProfile, Touch, Severity } from '../../../src/guardrail/schemas/index.js';
 
 const basePattern: PatternDefinition = {
   id: 'test-id',

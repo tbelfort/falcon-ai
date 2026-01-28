@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
 
 describe('PatternDefinitionRepository', () => {
   let db: Database.Database;

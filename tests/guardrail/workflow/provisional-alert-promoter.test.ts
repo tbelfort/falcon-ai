@@ -8,14 +8,14 @@ import {
   checkAndPromoteAlert,
   onOccurrenceCreated,
   DEFAULT_PATTERN_GATE,
-} from '../../src/workflow/provisional-alert-promoter.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { ProvisionalAlertRepository } from '../../src/storage/repositories/provisional-alert.repo.js';
-import { PatternOccurrenceRepository } from '../../src/storage/repositories/pattern-occurrence.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import type { DocFingerprint, EvidenceBundle } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/workflow/provisional-alert-promoter.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { ProvisionalAlertRepository } from '../../../src/guardrail/storage/repositories/provisional-alert.repo.js';
+import { PatternOccurrenceRepository } from '../../../src/guardrail/storage/repositories/pattern-occurrence.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import type { DocFingerprint, EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 describe('checkAndPromoteAlert', () => {
   let db: Database.Database;

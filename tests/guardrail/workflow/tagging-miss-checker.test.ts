@@ -4,16 +4,16 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { checkForTaggingMisses } from '../../src/workflow/tagging-miss-checker.js';
-import type { PRReviewResult } from '../../src/workflow/pr-review-hook.js';
-import type { AttributionResult } from '../../src/attribution/orchestrator.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import { InjectionLogRepository } from '../../src/storage/repositories/injection-log.repo.js';
-import { TaggingMissRepository } from '../../src/storage/repositories/tagging-miss.repo.js';
-import type { PatternDefinition, EvidenceBundle, DocFingerprint } from '../../src/schemas/index.js';
+import { checkForTaggingMisses } from '../../../src/guardrail/workflow/tagging-miss-checker.js';
+import type { PRReviewResult } from '../../../src/guardrail/workflow/pr-review-hook.js';
+import type { AttributionResult } from '../../../src/guardrail/attribution/orchestrator.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import { InjectionLogRepository } from '../../../src/guardrail/storage/repositories/injection-log.repo.js';
+import { TaggingMissRepository } from '../../../src/guardrail/storage/repositories/tagging-miss.repo.js';
+import type { PatternDefinition, EvidenceBundle, DocFingerprint } from '../../../src/guardrail/schemas/index.js';
 
 describe('checkForTaggingMisses', () => {
   let db: Database.Database;

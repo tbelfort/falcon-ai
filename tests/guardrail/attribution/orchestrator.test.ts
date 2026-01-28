@@ -10,12 +10,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { AttributionOrchestrator } from '../../src/attribution/orchestrator.js';
-import { createMockAttributionAgent } from '../../src/attribution/agent.js';
-import type { EvidenceBundle, DocFingerprint, Severity } from '../../src/schemas/index.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
+import { AttributionOrchestrator } from '../../../src/guardrail/attribution/orchestrator.js';
+import { createMockAttributionAgent } from '../../../src/guardrail/attribution/agent.js';
+import type { EvidenceBundle, DocFingerprint, Severity } from '../../../src/guardrail/schemas/index.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
 
 describe('AttributionOrchestrator', () => {
   let db: Database.Database;

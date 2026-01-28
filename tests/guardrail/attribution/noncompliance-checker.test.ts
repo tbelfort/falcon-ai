@@ -10,8 +10,8 @@ import {
   checkForNoncompliance,
   extractKeywords,
   searchDocument,
-} from '../../src/attribution/noncompliance-checker.js';
-import type { EvidenceBundle } from '../../src/schemas/index.js';
+} from '../../../src/guardrail/attribution/noncompliance-checker.js';
+import type { EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 /**
  * Base evidence for tests.

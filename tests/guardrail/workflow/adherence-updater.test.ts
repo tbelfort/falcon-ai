@@ -4,15 +4,15 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { updateAdherence } from '../../src/workflow/adherence-updater.js';
-import type { PRReviewResult, ConfirmedFinding } from '../../src/workflow/pr-review-hook.js';
-import { initializeDatabase } from '../../src/storage/db.js';
-import { WorkspaceRepository } from '../../src/storage/repositories/workspace.repo.js';
-import { ProjectRepository } from '../../src/storage/repositories/project.repo.js';
-import { PatternDefinitionRepository } from '../../src/storage/repositories/pattern-definition.repo.js';
-import { PatternOccurrenceRepository } from '../../src/storage/repositories/pattern-occurrence.repo.js';
-import { InjectionLogRepository } from '../../src/storage/repositories/injection-log.repo.js';
-import type { DocFingerprint, EvidenceBundle } from '../../src/schemas/index.js';
+import { updateAdherence } from '../../../src/guardrail/workflow/adherence-updater.js';
+import type { PRReviewResult, ConfirmedFinding } from '../../../src/guardrail/workflow/pr-review-hook.js';
+import { initializeDatabase } from '../../../src/guardrail/storage/db.js';
+import { WorkspaceRepository } from '../../../src/guardrail/storage/repositories/workspace.repo.js';
+import { ProjectRepository } from '../../../src/guardrail/storage/repositories/project.repo.js';
+import { PatternDefinitionRepository } from '../../../src/guardrail/storage/repositories/pattern-definition.repo.js';
+import { PatternOccurrenceRepository } from '../../../src/guardrail/storage/repositories/pattern-occurrence.repo.js';
+import { InjectionLogRepository } from '../../../src/guardrail/storage/repositories/injection-log.repo.js';
+import type { DocFingerprint, EvidenceBundle } from '../../../src/guardrail/schemas/index.js';
 
 describe('updateAdherence', () => {
   let db: Database.Database;
