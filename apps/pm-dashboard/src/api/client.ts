@@ -2,9 +2,15 @@ import type {
   ApiError,
   ApiResponse,
   CommentDto,
+  FindingDto,
+  FindingStatus,
   IssueDto,
+  IssueFindingsDto,
   IssueStage,
   LabelDto,
+  OrchestratorStatusDto,
+  PresetConfig,
+  PresetDto,
   ProjectDto,
 } from './types';
 
@@ -119,5 +125,67 @@ export function updateIssueLabels(issueId: string, labelIds: string[]): Promise<
   return request<IssueDto>(`/api/issues/${issueId}`, {
     method: 'PATCH',
     body: JSON.stringify({ labelIds }),
+  });
+}
+
+export function fetchOrchestratorStatus(): Promise<OrchestratorStatusDto> {
+  return request<OrchestratorStatusDto>('/api/orchestrator/status');
+}
+
+export function fetchIssueFindings(issueId: string): Promise<IssueFindingsDto> {
+  return request<IssueFindingsDto>(`/api/issues/${issueId}/findings`);
+}
+
+export function reviewFinding(
+  findingId: string,
+  status: FindingStatus,
+  comment?: string,
+): Promise<FindingDto> {
+  return request<FindingDto>(`/api/findings/${findingId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ status, comment }),
+  });
+}
+
+export function launchFixer(issueId: string): Promise<null> {
+  return request<null>(`/api/issues/${issueId}/launch-fixer`, {
+    method: 'POST',
+  });
+}
+
+export function fetchPresets(): Promise<PresetDto[]> {
+  return request<PresetDto[]>('/api/presets');
+}
+
+export function createPreset(payload: {
+  name: string;
+  config: PresetConfig;
+  isDefault?: boolean;
+  description?: string | null;
+}): Promise<PresetDto> {
+  return request<PresetDto>('/api/presets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updatePreset(
+  presetId: string,
+  payload: Partial<{
+    name: string;
+    config: PresetConfig;
+    isDefault: boolean;
+    description: string | null;
+  }>,
+): Promise<PresetDto> {
+  return request<PresetDto>(`/api/presets/${presetId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deletePreset(presetId: string): Promise<{ id: string }> {
+  return request<{ id: string }>(`/api/presets/${presetId}`, {
+    method: 'DELETE',
   });
 }
