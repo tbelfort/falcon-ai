@@ -6,44 +6,44 @@
   "workspaces": [
     "apps/*"
   ],
-  "main": "./dist/workflow/index.js",
-  "types": "./dist/workflow/index.d.ts",
+  "main": "./dist/guardrail/workflow/index.js",
+  "types": "./dist/guardrail/workflow/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/workflow/index.js",
-      "types": "./dist/workflow/index.d.ts"
+      "import": "./dist/guardrail/workflow/index.js",
+      "types": "./dist/guardrail/workflow/index.d.ts"
     },
     "./workflow": {
-      "import": "./dist/workflow/index.js",
-      "types": "./dist/workflow/index.d.ts"
+      "import": "./dist/guardrail/workflow/index.js",
+      "types": "./dist/guardrail/workflow/index.d.ts"
     },
     "./storage": {
-      "import": "./dist/storage/db.js",
-      "types": "./dist/storage/db.d.ts"
+      "import": "./dist/guardrail/storage/db.js",
+      "types": "./dist/guardrail/storage/db.d.ts"
     },
     "./schemas": {
-      "import": "./dist/schemas/index.js",
-      "types": "./dist/schemas/index.d.ts"
+      "import": "./dist/guardrail/schemas/index.js",
+      "types": "./dist/guardrail/schemas/index.d.ts"
     },
     "./attribution": {
-      "import": "./dist/attribution/index.js",
-      "types": "./dist/attribution/index.d.ts"
+      "import": "./dist/guardrail/attribution/index.js",
+      "types": "./dist/guardrail/attribution/index.d.ts"
     },
     "./injection": {
-      "import": "./dist/injection/index.js",
-      "types": "./dist/injection/index.d.ts"
+      "import": "./dist/guardrail/injection/index.js",
+      "types": "./dist/guardrail/injection/index.d.ts"
     },
     "./evolution": {
-      "import": "./dist/evolution/index.js",
-      "types": "./dist/evolution/index.d.ts"
+      "import": "./dist/guardrail/evolution/index.js",
+      "types": "./dist/guardrail/evolution/index.d.ts"
     },
     "./metrics": {
-      "import": "./dist/metrics/index.js",
-      "types": "./dist/metrics/index.d.ts"
+      "import": "./dist/guardrail/metrics/index.js",
+      "types": "./dist/guardrail/metrics/index.d.ts"
     },
     "./services": {
-      "import": "./dist/services/index.js",
-      "types": "./dist/services/index.d.ts"
+      "import": "./dist/guardrail/services/index.js",
+      "types": "./dist/guardrail/services/index.d.ts"
     },
     "./config": {
       "import": "./dist/config/loader.js",
