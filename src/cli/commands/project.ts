@@ -5,7 +5,7 @@
  */
 
 import { Command } from 'commander';
-import { getDatabase } from '../../storage/db.js';
+import { getDatabase } from '../../guardrail/storage/db.js';
 import { resolveScope, ScopeResolutionError } from '../../config/scope-resolver.js';
 
 interface Workspace {

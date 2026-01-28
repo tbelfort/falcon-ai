@@ -12,7 +12,7 @@ import { createHash } from 'crypto';
 import path from 'path';
 import { findConfigPath, loadConfig } from './loader.js';
 import { canonicalizeGitUrl } from './url-utils.js';
-import { getDatabase } from '../storage/db.js';
+import { getDatabase } from '../guardrail/storage/db.js';
 
 export type ScopeResolutionReason = 'no_config' | 'no_remote' | 'not_registered';
 
