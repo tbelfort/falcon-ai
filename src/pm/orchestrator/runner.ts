@@ -42,9 +42,13 @@ export class OrchestratorRunner {
     lastTickAt: null,
   };
 
+  /** Minimum poll interval to prevent runaway loops */
+  static readonly MIN_POLL_INTERVAL_MS = 100;
+
   constructor(private readonly options: OrchestratorRunnerOptions) {
     this.clock = options.clock ?? systemClock;
-    this.pollIntervalMs = options.pollIntervalMs ?? 2500;
+    const requestedInterval = options.pollIntervalMs ?? 2500;
+    this.pollIntervalMs = Math.max(requestedInterval, OrchestratorRunner.MIN_POLL_INTERVAL_MS);
   }
 
   async start(): Promise<void> {
@@ -181,29 +185,29 @@ export class OrchestratorRunner {
 
     this.state.inFlightRuns.set(issue.id, run);
 
-    this.options.repos.issues.update(issue.id, {
-      assignedAgentId: agent.id,
-      updatedAt: now,
-    });
-
-    this.options.repos.agents.update(agent.id, {
-      status: 'working',
-      currentIssueId: issue.id,
-      currentStage: issue.stage,
-      lastActiveAt: now,
-      updatedAt: now,
-    });
-
-    const registryAgent = this.options.registry.getAgent(agent.id);
-    if (registryAgent) {
-      this.options.registry.updateAgent(agent.id, {
-        status: 'WORKING',
-        issueId: issue.id,
-        lastError: null,
-      });
-    }
-
     try {
+      this.options.repos.issues.update(issue.id, {
+        assignedAgentId: agent.id,
+        updatedAt: now,
+      });
+
+      this.options.repos.agents.update(agent.id, {
+        status: 'working',
+        currentIssueId: issue.id,
+        currentStage: issue.stage,
+        lastActiveAt: now,
+        updatedAt: now,
+      });
+
+      const registryAgent = this.options.registry.getAgent(agent.id);
+      if (registryAgent) {
+        this.options.registry.updateAgent(agent.id, {
+          status: 'WORKING',
+          issueId: issue.id,
+          lastError: null,
+        });
+      }
+
       const result = await this.options.executor.invokeStage({
         agentId: agent.id,
         issue,

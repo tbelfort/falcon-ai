@@ -34,9 +34,32 @@ export class WorkflowExecutor {
   }
 }
 
+/**
+ * Builds the default prompt for a stage invocation.
+ * User-controlled content (title, description) is wrapped in XML tags
+ * to prevent prompt injection attacks.
+ */
 function buildDefaultPrompt(issue: IssueRecord, stage: IssueStage): string {
+  const sanitizedTitle = sanitizeUserContent(issue.title);
+  const sanitizedDescription = issue.description
+    ? sanitizeUserContent(issue.description)
+    : '';
+
   const header = `Stage: ${stage}`;
-  const title = `Issue #${issue.number}: ${issue.title}`;
-  const description = issue.description ? `\n\n${issue.description}` : '';
-  return `${header}\n${title}${description}`.trim();
+  const titleBlock = `<issue-title>Issue #${issue.number}: ${sanitizedTitle}</issue-title>`;
+  const descriptionBlock = sanitizedDescription
+    ? `\n\n<issue-description>\n${sanitizedDescription}\n</issue-description>`
+    : '';
+
+  return `${header}\n${titleBlock}${descriptionBlock}`.trim();
+}
+
+/**
+ * Sanitizes user content to prevent prompt injection.
+ * Escapes XML-like tags that could break the delimiter structure.
+ */
+function sanitizeUserContent(content: string): string {
+  return content
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

@@ -95,8 +95,39 @@ If no preset can be resolved, orchestration must stop and surface an error on th
 
 ### Human Gates (Non-Negotiable)
 
-- `PR_HUMAN_REVIEW` is a hard stop: orchestration must not automatically advance out of it.
-- Merge is never automatic in Phase 5 (Phase 7 decides if auto-merge exists).
+The following stages are human gates - the orchestrator MUST NOT automatically advance issues out of them:
+
+| Stage | Reason |
+|-------|--------|
+| `PR_HUMAN_REVIEW` | Human must review PR findings and approve/dismiss |
+| `MERGE_READY` | Merge requires explicit human action in Phase 5 (Phase 7 may add optional auto-merge) |
+
+Implementation: `HUMAN_GATES = Set(['PR_HUMAN_REVIEW', 'MERGE_READY'])`
+
+### Auto-Advance Behavior
+
+The orchestrator automatically advances issues past certain "transient" stages without dispatching an agent:
+
+| Stage | Auto-Advance? | Rationale |
+|-------|---------------|-----------|
+| `TODO` | Yes | Starting point for automation; immediately advances to first work stage |
+| `BACKLOG` | No | Requires explicit human decision to prioritize |
+| All others | No | Require agent work or are human gates |
+
+Implementation: `AUTO_ADVANCE_STAGES = Set(['TODO'])`
+
+### Stage-to-Status Mapping
+
+Issues have both a `stage` (workflow position) and a `status` (simplified state for UI/queries). The orchestrator maintains this mapping:
+
+| Stage | Status |
+|-------|--------|
+| BACKLOG | `backlog` |
+| TODO | `todo` |
+| DONE | `done` |
+| All others | `in_progress` |
+
+This mapping is authoritative. The `status` field MUST be updated atomically with `stage` transitions.
 
 ## Goal
 
@@ -160,6 +191,45 @@ Implement a runner that can operate in two modes:
 2. **Looping** (dev mode): `orchestrator.start()` polls periodically.
 
 The tick-based API is mandatory for unit tests and makes Phase 5 runnable without a server.
+
+### Configuration Defaults
+
+| Parameter | Default | Minimum | Rationale |
+|-----------|---------|---------|-----------|
+| `pollIntervalMs` | 2500ms | 100ms | Balance between responsiveness and system load |
+
+The minimum poll interval is enforced to prevent runaway loops.
+
+### Agent Selection Algorithm
+
+Agent selection uses a **dual-status verification** pattern:
+
+1. Query DB for agents matching `project_id`, `model`, and `status === 'idle'`
+2. For each candidate, verify `AgentRegistry.getAgent(id).status === 'IDLE'`
+3. Return first agent passing both checks, or `null`
+
+**Rationale:** The in-memory registry tracks real-time agent state (may be updated before DB sync). Both sources must agree before assignment.
+
+### Default Prompt Format
+
+When `WorkflowExecutorOptions.promptBuilder` is not provided, the executor uses this format:
+
+```
+Stage: {STAGE}
+<issue-title>Issue #{number}: {title}</issue-title>
+
+<issue-description>
+{description}
+</issue-description>
+```
+
+User content (title, description) is wrapped in XML tags and HTML-escaped to prevent prompt injection attacks. Custom prompt builders can be injected for stage-specific formatting.
+
+### Known Limitations (Phase 5)
+
+| Limitation | Reason | Future Work |
+|------------|--------|-------------|
+| `resultSummary` hardcoded to "completed" | Agent invoker interface does not return execution summary | Phase 6/7 should extend invoker for observability |
 
 ---
 
