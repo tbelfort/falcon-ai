@@ -1,53 +1,16 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { IssueDetailModal } from '@/components/IssueDetailModal';
-import { useWebSocket } from '@/hooks/useWebSocket';
+import { FakeWebSocketTransport, useWebSocket } from '@/hooks/useWebSocket';
+import { ActiveAgents } from '@/pages/ActiveAgents';
+import { PRReview } from '@/pages/PRReview';
+import { Settings } from '@/pages/Settings';
 import { useIssuesStore } from '@/stores/issues';
 import { useProjectStore } from '@/stores/projects';
 import { useUiStore } from '@/stores/ui';
-import type { IssueStage, WsServerMessage } from '@/api/types';
-
-// Exported for testing
-export function resolveWsUrl(baseUrl?: string, locationProtocol?: string, locationHost?: string): string {
-  const base = baseUrl ?? import.meta.env.VITE_API_BASE_URL;
-  if (base) {
-    const url = new URL(base, `${locationProtocol ?? window.location.protocol}//${locationHost ?? window.location.host}`);
-    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${url.host}/ws`;
-  }
-  const protocol = (locationProtocol ?? window.location.protocol) === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${locationHost ?? window.location.host}/ws`;
-}
-
-// Exported for testing
-export interface WsEventHandlerDeps {
-  selectedProjectId: string | null;
-  selectedIssueId: string | null;
-  loadIssues: (projectId: string) => Promise<void>;
-  loadLabels: (projectId: string) => Promise<void>;
-  loadComments: (issueId: string) => Promise<void>;
-}
-
-export function createWsEventHandler(deps: WsEventHandlerDeps) {
-  return (message: WsServerMessage) => {
-    if (message.type !== 'event') {
-      return;
-    }
-    if (deps.selectedProjectId && message.channel === `project:${deps.selectedProjectId}`) {
-      if (message.event.startsWith('issue.')) {
-        deps.loadIssues(deps.selectedProjectId);
-      }
-      if (message.event === 'label.created') {
-        deps.loadLabels(deps.selectedProjectId);
-      }
-    }
-    if (deps.selectedIssueId && message.channel === `issue:${deps.selectedIssueId}`) {
-      if (message.event === 'comment.created') {
-        deps.loadComments(deps.selectedIssueId);
-      }
-    }
-  };
-}
+import type { IssueStage } from '@/api/types';
+import { createWsEventHandler, resolveWsUrl } from '@/utils/websocket';
 
 export default function App() {
   const { projects, selectedProjectId, loadProjects, selectProject } = useProjectStore();
@@ -63,6 +26,7 @@ export default function App() {
     updateLabels,
   } = useIssuesStore();
   const { selectedIssueId, openIssue, closeIssue, errorBanner, setError, clearError } = useUiStore();
+  const [activeView, setActiveView] = useState<'kanban' | 'agents' | 'review' | 'settings'>('kanban');
 
   useEffect(() => {
     loadProjects();
@@ -106,13 +70,15 @@ export default function App() {
     [selectedProjectId, selectedIssueId, loadIssues, loadLabels, loadComments],
   );
 
-  // Disable WebSocket in MSW mode (when VITE_API_BASE_URL is not set)
+  // Use a fake transport in MSW mode (when VITE_API_BASE_URL is not set)
   const isMswMode = !import.meta.env.VITE_API_BASE_URL;
+  const wsTransport = useMemo(() => (isMswMode ? new FakeWebSocketTransport() : undefined), [isMswMode]);
 
   useWebSocket({
-    url: selectedProjectId && !isMswMode ? wsUrl : null,
+    url: selectedProjectId ? wsUrl : null,
     onEvent: handleWsEvent,
     subscriptions: wsChannels,
+    transport: wsTransport,
   });
 
   const selectedIssue = useMemo(() => {
@@ -148,7 +114,7 @@ export default function App() {
           <select
             className="rounded-full border border-[rgba(27,27,22,0.2)] bg-white px-4 py-2 text-sm"
             value={selectedProjectId ?? ''}
-            onChange={(event) => selectProject(event.target.value)}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => selectProject(event.target.value)}
           >
             {projects.status === 'success' &&
               projects.data.map((project) => (
@@ -159,6 +125,28 @@ export default function App() {
           </select>
         </div>
       </header>
+
+      <nav className="mx-auto mt-6 flex max-w-6xl flex-wrap gap-2">
+        {[
+          { id: 'kanban', label: 'Kanban' },
+          { id: 'agents', label: 'Active Agents' },
+          { id: 'review', label: 'PR Review' },
+          { id: 'settings', label: 'Settings' },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+              activeView === item.id
+                ? 'border-[rgba(27,27,22,0.3)] bg-white text-ink shadow-soft'
+                : 'border-[rgba(27,27,22,0.2)] text-steel'
+            }`}
+            onClick={() => setActiveView(item.id as typeof activeView)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
 
       {errorBanner && (
         <div className="mx-auto mt-6 flex max-w-6xl animate-float-in items-center justify-between rounded-2xl border border-[rgba(198,92,74,0.4)] bg-[rgba(198,92,74,0.1)] px-5 py-3 text-sm text-[var(--rose)]">
@@ -182,19 +170,19 @@ export default function App() {
           </div>
         )}
 
-        {issues.status === 'loading' && (
+        {issues.status === 'loading' && (activeView === 'kanban' || activeView === 'review') && (
           <div className="rounded-3xl border border-dashed border-[rgba(27,27,22,0.2)] p-8 text-sm text-steel">
             Loading issues...
           </div>
         )}
 
-        {issues.status === 'error' && (
+        {issues.status === 'error' && (activeView === 'kanban' || activeView === 'review') && (
           <div className="rounded-3xl border border-dashed border-[rgba(27,27,22,0.2)] p-8 text-sm text-[var(--rose)]">
             {issues.error}
           </div>
         )}
 
-        {issues.status === 'success' && (
+        {activeView === 'kanban' && issues.status === 'success' && (
           <div className="animate-float-in">
             <KanbanBoard
               issues={issues.data}
@@ -203,9 +191,27 @@ export default function App() {
             />
           </div>
         )}
+
+        {activeView === 'agents' && (
+          <div className="animate-float-in">
+            <ActiveAgents transport={wsTransport} />
+          </div>
+        )}
+
+        {activeView === 'review' && (
+          <div className="animate-float-in">
+            <PRReview />
+          </div>
+        )}
+
+        {activeView === 'settings' && (
+          <div className="animate-float-in">
+            <Settings />
+          </div>
+        )}
       </main>
 
-      {selectedIssue && (
+      {activeView === 'kanban' && selectedIssue && (
         <IssueDetailModal
           issue={selectedIssue}
           labels={labels}

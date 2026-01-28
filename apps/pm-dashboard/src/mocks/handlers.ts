@@ -2,12 +2,19 @@ import { http, HttpResponse } from 'msw';
 import type { ApiResponse, IssueStage } from '@/api/types';
 import {
   addComment,
+  createPreset,
+  getOrchestratorStatus,
   listComments,
+  listFindings,
   listIssues,
   listLabels,
+  listPresets,
   listProjects,
   moveIssue,
+  removePreset,
+  reviewFinding,
   updateIssueLabels,
+  updatePreset,
 } from './data';
 
 function success<T>(data: T) {
@@ -22,6 +29,8 @@ function failure(code: string, message: string, status = 400, details?: unknown)
 
 export const handlers = [
   http.get('/api/projects', () => success(listProjects())),
+
+  http.get('/api/orchestrator/status', () => success(getOrchestratorStatus())),
 
   http.get('/api/issues', ({ request }) => {
     const url = new URL(request.url);
@@ -80,5 +89,77 @@ export const handlers = [
       return failure('issue_not_found', 'Issue not found', 404);
     }
     return success(updated);
+  }),
+
+  http.get('/api/issues/:issueId/findings', ({ params }) => {
+    const issueId = params.issueId as string;
+    const findings = listFindings(issueId);
+    if (!findings) {
+      return failure('findings_not_found', 'Findings not found', 404);
+    }
+    return success(findings);
+  }),
+
+  http.post('/api/findings/:id/review', async ({ params, request }) => {
+    const findingId = params.id as string;
+    const body = (await request.json()) as { status?: string; comment?: string };
+    if (!body.status) {
+      return failure('missing_status', 'status is required');
+    }
+    if (!['approved', 'dismissed', 'pending'].includes(body.status)) {
+      return failure('invalid_status', 'status is invalid');
+    }
+    const updated = reviewFinding(findingId, body.status as any);
+    if (!updated) {
+      return failure('finding_not_found', 'Finding not found', 404);
+    }
+    return success(updated);
+  }),
+
+  http.post('/api/issues/:issueId/launch-fixer', () => success(null)),
+
+  http.get('/api/presets', () => success(listPresets())),
+
+  http.post('/api/presets', async ({ request }) => {
+    const body = (await request.json()) as {
+      name?: string;
+      config?: unknown;
+      description?: string | null;
+      isDefault?: boolean;
+    };
+    if (!body.name || !body.config) {
+      return failure('missing_fields', 'name and config are required');
+    }
+    const created = createPreset({
+      name: body.name,
+      config: body.config as any,
+      description: body.description ?? null,
+      isDefault: body.isDefault ?? false,
+    });
+    return success(created);
+  }),
+
+  http.patch('/api/presets/:id', async ({ params, request }) => {
+    const presetId = params.id as string;
+    const body = (await request.json()) as {
+      name?: string;
+      config?: unknown;
+      description?: string | null;
+      isDefault?: boolean;
+    };
+    const updated = updatePreset(presetId, body as any);
+    if (!updated) {
+      return failure('preset_not_found', 'Preset not found', 404);
+    }
+    return success(updated);
+  }),
+
+  http.delete('/api/presets/:id', ({ params }) => {
+    const presetId = params.id as string;
+    const removed = removePreset(presetId);
+    if (!removed) {
+      return failure('preset_not_found', 'Preset not found', 404);
+    }
+    return success({ id: presetId });
   }),
 ];

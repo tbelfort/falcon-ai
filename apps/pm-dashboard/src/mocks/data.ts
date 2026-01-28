@@ -1,4 +1,16 @@
-import type { CommentDto, IssueDto, IssueStage, LabelDto, ProjectDto } from '@/api/types';
+import type {
+  CommentDto,
+  FindingDto,
+  FindingStatus,
+  IssueDto,
+  IssueFindingsDto,
+  IssueStage,
+  LabelDto,
+  OrchestratorStatusDto,
+  PresetConfig,
+  PresetDto,
+  ProjectDto,
+} from '@/api/types';
 
 const project: ProjectDto = {
   id: 'proj-falcon',
@@ -129,6 +141,140 @@ let comments = Object.fromEntries(
 );
 let commentCounter = 3;
 
+const seedFindings: Record<string, IssueFindingsDto> = {
+  'issue-101': {
+    prNumber: 412,
+    prUrl: 'https://github.com/example/falcon-ai/pull/412',
+    findings: [
+      {
+        id: 'finding-101',
+        findingType: 'error',
+        category: 'security',
+        filePath: 'src/auth.ts',
+        lineNumber: 42,
+        message: 'Potential SQL injection',
+        suggestion: 'Use parameterized queries',
+        foundBy: 'claude-sonnet-4',
+        confirmedBy: 'claude-opus-4.5',
+        confidence: 0.95,
+        status: 'pending',
+      },
+    ],
+    summary: { total: 1, pending: 1, approved: 0, dismissed: 0 },
+  },
+  'issue-106': {
+    prNumber: 431,
+    prUrl: 'https://github.com/example/falcon-ai/pull/431',
+    findings: [
+      {
+        id: 'finding-1',
+        findingType: 'error',
+        category: 'security',
+        filePath: 'src/auth.ts',
+        lineNumber: 42,
+        message: 'Potential SQL injection',
+        suggestion: 'Use parameterized queries',
+        foundBy: 'claude-sonnet-4',
+        confirmedBy: 'claude-opus-4.5',
+        confidence: 0.95,
+        status: 'pending',
+      },
+      {
+        id: 'finding-2',
+        findingType: 'warning',
+        category: 'reliability',
+        filePath: 'src/api/cache.ts',
+        lineNumber: 108,
+        message: 'Cache key is missing tenant namespace',
+        suggestion: 'Prefix key with tenant id',
+        foundBy: 'claude-sonnet-4',
+        confirmedBy: 'claude-opus-4.5',
+        confidence: 0.82,
+        status: 'approved',
+      },
+      {
+        id: 'finding-3',
+        findingType: 'note',
+        category: 'style',
+        filePath: 'src/ui/Panel.tsx',
+        lineNumber: 12,
+        message: 'Consider extracting the shared header styles',
+        suggestion: 'Move styles to a reusable component',
+        foundBy: 'claude-sonnet-4',
+        confirmedBy: 'claude-opus-4.5',
+        confidence: 0.55,
+        status: 'dismissed',
+      },
+    ],
+    summary: { total: 3, pending: 1, approved: 1, dismissed: 1 },
+  },
+};
+
+const seedPresets: PresetDto[] = [
+  {
+    id: 'preset-default',
+    name: 'full-pipeline',
+    description: 'Default orchestration pipeline',
+    isDefault: true,
+    config: {
+      stages: ['CONTEXT_PACK', 'SPEC', 'IMPLEMENT', 'PR_REVIEW', 'TESTING'],
+      models: {
+        default: 'gpt-4o',
+        overrides: {
+          PR_REVIEW: 'claude-opus-4.5',
+        },
+      },
+      prReview: {
+        orchestrator: 'claude-opus-4.5',
+        scouts: ['claude-sonnet-4', 'gpt-4o'],
+        judge: 'claude-opus-4.5',
+      },
+    },
+  },
+  {
+    id: 'preset-fast',
+    name: 'fast-pass',
+    description: 'Shortened pipeline for small fixes',
+    isDefault: false,
+    config: {
+      stages: ['IMPLEMENT', 'PR_REVIEW', 'TESTING'],
+      models: {
+        default: 'gpt-4o-mini',
+      },
+    },
+  },
+];
+
+const seedOrchestratorStatus: OrchestratorStatusDto = {
+  running: true,
+  activeIssues: 2,
+  queuedIssues: 4,
+  activeAgents: [
+    { agentId: 'A-04', issueId: 'issue-105', stage: 'IMPLEMENT' },
+    { agentId: 'A-19', issueId: 'issue-106', stage: 'PR_REVIEW' },
+  ],
+};
+
+let findingsByIssueId = Object.fromEntries(
+  Object.entries(seedFindings).map(([issueId, payload]) => [
+    issueId,
+    {
+      ...payload,
+      findings: payload.findings.map((finding) => ({ ...finding })),
+      summary: { ...payload.summary },
+    },
+  ]),
+) as Record<string, IssueFindingsDto>;
+let presets = seedPresets.map((preset) => ({
+  ...preset,
+  config: { ...preset.config, models: { ...preset.config.models } },
+}));
+let presetCounter = 3;
+let orchestratorStatus = {
+  ...seedOrchestratorStatus,
+  activeAgents: seedOrchestratorStatus.activeAgents.map((agent) => ({ ...agent })),
+};
+
 export function resetMockData() {
   issues = seedIssues.map((issue) => ({ ...issue, labels: [...issue.labels] }));
   comments = Object.fromEntries(
@@ -138,6 +284,25 @@ export function resetMockData() {
     ]),
   );
   commentCounter = 3;
+  findingsByIssueId = Object.fromEntries(
+    Object.entries(seedFindings).map(([issueId, payload]) => [
+      issueId,
+      {
+        ...payload,
+        findings: payload.findings.map((finding) => ({ ...finding })),
+        summary: { ...payload.summary },
+      },
+    ]),
+  ) as Record<string, IssueFindingsDto>;
+  presets = seedPresets.map((preset) => ({
+    ...preset,
+    config: { ...preset.config, models: { ...preset.config.models } },
+  }));
+  presetCounter = 3;
+  orchestratorStatus = {
+    ...seedOrchestratorStatus,
+    activeAgents: seedOrchestratorStatus.activeAgents.map((agent) => ({ ...agent })),
+  };
 }
 
 export function listProjects(): ProjectDto[] {
@@ -197,4 +362,108 @@ export function updateIssueLabels(issueId: string, labelIds: string[]): IssueDto
     return updated;
   });
   return updated;
+}
+
+function summarizeFindings(findings: FindingDto[]) {
+  return findings.reduce(
+    (acc, finding) => {
+      acc.total += 1;
+      if (finding.status === 'pending') {
+        acc.pending += 1;
+      }
+      if (finding.status === 'approved') {
+        acc.approved += 1;
+      }
+      if (finding.status === 'dismissed') {
+        acc.dismissed += 1;
+      }
+      return acc;
+    },
+    { total: 0, pending: 0, approved: 0, dismissed: 0 },
+  );
+}
+
+export function getOrchestratorStatus(): OrchestratorStatusDto {
+  return {
+    ...orchestratorStatus,
+    activeAgents: orchestratorStatus.activeAgents.map((agent) => ({ ...agent })),
+  };
+}
+
+export function listFindings(issueId: string): IssueFindingsDto | null {
+  const entry = findingsByIssueId[issueId];
+  if (!entry) {
+    return null;
+  }
+  return {
+    ...entry,
+    findings: entry.findings.map((finding) => ({ ...finding })),
+    summary: summarizeFindings(entry.findings),
+  };
+}
+
+export function reviewFinding(findingId: string, status: FindingStatus): FindingDto | null {
+  let updated: FindingDto | null = null;
+  Object.keys(findingsByIssueId).forEach((issueId) => {
+    const entry = findingsByIssueId[issueId];
+    entry.findings = entry.findings.map((finding) => {
+      if (finding.id !== findingId) {
+        return finding;
+      }
+      updated = { ...finding, status };
+      return updated;
+    });
+    findingsByIssueId[issueId] = {
+      ...entry,
+      summary: summarizeFindings(entry.findings),
+    };
+  });
+  return updated;
+}
+
+export function listPresets(): PresetDto[] {
+  return presets.map((preset) => ({
+    ...preset,
+    config: { ...preset.config, models: { ...preset.config.models } },
+  }));
+}
+
+export function createPreset(input: {
+  name: string;
+  config: PresetConfig;
+  description?: string | null;
+  isDefault?: boolean;
+}): PresetDto {
+  const preset: PresetDto = {
+    id: `preset-${presetCounter++}`,
+    name: input.name,
+    description: input.description ?? null,
+    isDefault: input.isDefault ?? false,
+    config: input.config,
+  };
+  presets = [...presets, preset];
+  return preset;
+}
+
+export function updatePreset(presetId: string, updates: Partial<PresetDto>): PresetDto | null {
+  let updated: PresetDto | null = null;
+  presets = presets.map((preset) => {
+    if (preset.id !== presetId) {
+      return preset;
+    }
+    updated = {
+      ...preset,
+      ...updates,
+      config: updates.config ?? preset.config,
+      description: updates.description ?? preset.description ?? null,
+    };
+    return updated;
+  });
+  return updated;
+}
+
+export function removePreset(presetId: string): boolean {
+  const before = presets.length;
+  presets = presets.filter((preset) => preset.id !== presetId);
+  return presets.length < before;
 }
