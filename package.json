@@ -80,6 +80,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@octokit/rest": "^22.0.1",
+    "@octokit/types": "^16.0.0",
     "better-sqlite3": "^11.0.0",
     "commander": "^14.0.0",
     "cors": "^2.8.5",

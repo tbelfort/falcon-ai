@@ -22,4 +22,5 @@ export interface OrchestratorState {
 export interface IssueOrchestrationAttributes {
   needsHumanAttention?: boolean;
   orchestrationError?: string | null;
+  autoMerge?: boolean;
 }

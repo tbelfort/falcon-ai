@@ -6,6 +6,7 @@ import type { WsBroadcaster } from './broadcast.js';
 import { createAgentIssuesRouter } from './routes/agent/issues.js';
 import { createCommentsRouter } from './routes/comments.js';
 import { createDocumentsRouter } from './routes/documents.js';
+import { createGitHubWebhookRouter } from './routes/github-webhook.js';
 import { createIssuesRouter } from './routes/issues.js';
 import { createLabelsRouter } from './routes/labels.js';
 import { createProjectsRouter } from './routes/projects.js';
@@ -58,6 +59,7 @@ export function createApiServer(options: ApiServerOptions) {
   app.use('/api/issues/:id/comments', createCommentsRouter(services, broadcaster));
   app.use('/api/issues/:id/documents', createDocumentsRouter(services, broadcaster));
   app.use('/api/agent/issues', createAgentIssuesRouter(services));
+  app.use('/api/github/webhook', createGitHubWebhookRouter(options.repos));
 
   return app;
 }

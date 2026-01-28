@@ -3,6 +3,7 @@ import type { AgentDto } from '../contracts/http.js';
 import type { IssueRecord } from '../core/repos/issues.js';
 import type { PmRepos } from '../core/repos/index.js';
 import type { IssueStage, ModelPreset } from '../core/types.js';
+import type { GitHubAdapter } from '../github/adapter.js';
 import { canTransition } from '../core/stage-machine.js';
 import { unixSeconds } from '../core/utils/time.js';
 import { selectAgentForStage } from './dispatcher.js';
@@ -22,16 +23,19 @@ export const systemClock: OrchestratorClock = {
 
 export interface OrchestratorRunnerOptions {
   projectId: string;
-  repos: Pick<PmRepos, 'issues' | 'agents' | 'workflowRuns'>;
+  repos: Pick<PmRepos, 'issues' | 'agents' | 'workflowRuns' | 'projects' | 'stageMessages'>;
   registry: AgentRegistry;
   executor: WorkflowExecutor;
   presets: ModelPreset[];
+  github?: GitHubAdapter;
   clock?: OrchestratorClock;
   pollIntervalMs?: number;
 }
 
 const AUTO_ADVANCE_STAGES = new Set<IssueStage>(['TODO']);
 const HUMAN_GATES = new Set<IssueStage>(['PR_HUMAN_REVIEW', 'MERGE_READY']);
+const REVIEW_COMMENT_IDENTIFIER = 'pr-review-summary';
+const REVIEW_COMMENT_AUTHOR = 'github-bot';
 
 export class OrchestratorRunner {
   private readonly clock: OrchestratorClock;
@@ -87,17 +91,33 @@ export class OrchestratorRunner {
         continue;
       }
 
-      const resolved = this.autoAdvanceIssue(issue, presetResult.value.config.stages, now);
-      if (!resolved) {
+      const advanced = this.autoAdvanceIssue(issue, presetResult.value.config.stages, now);
+      if (!advanced) {
         continue;
       }
+
+      let resolved: IssueRecord = advanced;
 
       if (this.state.inFlightRuns.has(resolved.id)) {
         continue;
       }
 
+      if (resolved.stage === 'PR_REVIEW') {
+        const ensured = await this.ensurePullRequest(resolved, now);
+        if (!ensured) {
+          continue;
+        }
+        resolved = ensured;
+      }
+
       if (resolved.stage === 'PR_HUMAN_REVIEW') {
+        await this.maybePostReviewComment(resolved, now);
         this.setIssueAttributes(resolved, { needsHumanAttention: true }, now);
+        continue;
+      }
+
+      if (resolved.stage === 'MERGE_READY') {
+        await this.maybeAutoMerge(resolved, now);
         continue;
       }
 
@@ -326,6 +346,165 @@ export class OrchestratorRunner {
       attributes: next,
       updatedAt: now,
     });
+  }
+
+  private async ensurePullRequest(issue: IssueRecord, now: number): Promise<IssueRecord | null> {
+    if (!this.options.github) {
+      return issue;
+    }
+
+    if (issue.prNumber && issue.prUrl) {
+      return issue;
+    }
+
+    const project = this.options.repos.projects.getById(issue.projectId);
+    if (!project || !project.repoUrl) {
+      this.setIssueAttributes(
+        issue,
+        { orchestrationError: 'Project repoUrl is required to create PRs' },
+        now
+      );
+      return null;
+    }
+
+    if (!issue.branchName) {
+      this.setIssueAttributes(
+        issue,
+        { orchestrationError: 'Issue branchName is required to create PRs' },
+        now
+      );
+      return null;
+    }
+
+    const body = issue.description?.trim() || `Automated PR for issue #${issue.number}.`;
+
+    try {
+      const pr = await this.options.github.createPullRequest({
+        repoUrl: project.repoUrl,
+        title: issue.title,
+        body,
+        branchName: issue.branchName,
+        defaultBranch: project.defaultBranch,
+      });
+
+      const updated = this.options.repos.issues.update(issue.id, {
+        prNumber: pr.number,
+        prUrl: pr.url,
+        updatedAt: now,
+      });
+
+      return updated ?? issue;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'GitHub PR creation failed';
+      this.setIssueAttributes(issue, { orchestrationError: message }, now);
+      return null;
+    }
+  }
+
+  private async maybePostReviewComment(issue: IssueRecord, now: number): Promise<void> {
+    if (!this.options.github) {
+      return;
+    }
+
+    const project = this.options.repos.projects.getById(issue.projectId);
+    if (!project || !project.repoUrl) {
+      this.setIssueAttributes(
+        issue,
+        { orchestrationError: 'Project repoUrl is required to post PR comments' },
+        now
+      );
+      return;
+    }
+
+    if (!issue.prNumber) {
+      this.setIssueAttributes(
+        issue,
+        { orchestrationError: 'Issue prNumber is required to post PR comments' },
+        now
+      );
+      return;
+    }
+
+    const pending = this.options.repos.stageMessages.listUnreadByStage(
+      issue.id,
+      'PR_HUMAN_REVIEW'
+    );
+    if (pending.length === 0) {
+      return;
+    }
+
+    const body = pending
+      .map((message) => message.message.trim())
+      .filter((message) => message.length > 0)
+      .join('\n\n---\n\n');
+
+    if (!body) {
+      this.options.repos.stageMessages.markRead(
+        pending.map((message) => message.id),
+        now,
+        REVIEW_COMMENT_AUTHOR
+      );
+      return;
+    }
+
+    try {
+      await this.options.github.upsertBotComment({
+        repoUrl: project.repoUrl,
+        issueNumber: issue.prNumber,
+        identifier: REVIEW_COMMENT_IDENTIFIER,
+        body,
+      });
+
+      this.options.repos.stageMessages.markRead(
+        pending.map((message) => message.id),
+        now,
+        REVIEW_COMMENT_AUTHOR
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'GitHub comment update failed';
+      this.setIssueAttributes(issue, { orchestrationError: message }, now);
+    }
+  }
+
+  private async maybeAutoMerge(issue: IssueRecord, now: number): Promise<void> {
+    const attrs = normalizeAttributes(issue.attributes);
+    if (!attrs.autoMerge) {
+      return;
+    }
+
+    if (!this.options.github) {
+      return;
+    }
+
+    const project = this.options.repos.projects.getById(issue.projectId);
+    if (!project || !project.repoUrl) {
+      this.setIssueAttributes(
+        issue,
+        { orchestrationError: 'Project repoUrl is required to merge PRs' },
+        now
+      );
+      return;
+    }
+
+    if (!issue.prNumber) {
+      this.setIssueAttributes(
+        issue,
+        { orchestrationError: 'Issue prNumber is required to merge PRs' },
+        now
+      );
+      return;
+    }
+
+    try {
+      await this.options.github.mergePullRequest({
+        repoUrl: project.repoUrl,
+        prNumber: issue.prNumber,
+      });
+      this.updateIssueStage(issue, 'DONE', now);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'GitHub merge failed';
+      this.setIssueAttributes(issue, { orchestrationError: message }, now);
+    }
   }
 }
 
