@@ -117,7 +117,8 @@ function createTestProject(
     name: 'Test Project',
     slug: 'test-project',
     description: null,
-    repoUrl: overrides?.repoUrl ?? 'https://github.com/test/repo',
+    // Use explicit undefined check to allow null to be passed
+    repoUrl: overrides?.repoUrl !== undefined ? overrides.repoUrl : 'https://github.com/test/repo',
     defaultBranch: overrides?.defaultBranch ?? 'main',
     config: {},
     createdAt: 0,
