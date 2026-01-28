@@ -6,6 +6,8 @@ import type { UpsertBotCommentInput } from './comment-poster.js';
 import { upsertBotComment } from './comment-poster.js';
 import type { MergePullRequestInput } from './merger.js';
 import { mergePullRequest } from './merger.js';
+import type { PullRequestStatus, PullRequestStatusInput } from './pr-status.js';
+import { getPullRequestStatus } from './pr-status.js';
 
 export interface GitHubAdapter {
   createPullRequest(
@@ -13,6 +15,7 @@ export interface GitHubAdapter {
   ): Promise<PullRequestInfo>;
   upsertBotComment(input: Omit<UpsertBotCommentInput, 'octokit'>): Promise<void>;
   mergePullRequest(input: Omit<MergePullRequestInput, 'octokit'>): Promise<void>;
+  getPullRequestStatus(input: Omit<PullRequestStatusInput, 'octokit'>): Promise<PullRequestStatus>;
 }
 
 export class OctokitGitHubAdapter implements GitHubAdapter {
@@ -36,5 +39,9 @@ export class OctokitGitHubAdapter implements GitHubAdapter {
 
   async mergePullRequest(input: Omit<MergePullRequestInput, 'octokit'>): Promise<void> {
     return mergePullRequest({ ...input, octokit: this.octokit });
+  }
+
+  async getPullRequestStatus(input: Omit<PullRequestStatusInput, 'octokit'>): Promise<PullRequestStatus> {
+    return getPullRequestStatus({ ...input, octokit: this.octokit });
   }
 }

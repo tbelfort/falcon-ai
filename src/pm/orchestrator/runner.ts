@@ -1,4 +1,5 @@
 import type { AgentRegistry } from '../agents/registry.js';
+import { syncIdleAgentToBase } from '../agents/git-sync.js';
 import { scrubCredentials } from '../agents/invokers/credential-scrubber.js';
 import type { AgentDto } from '../contracts/http.js';
 import type { IssueRecord } from '../core/repos/issues.js';
@@ -31,6 +32,8 @@ export interface OrchestratorRunnerOptions {
   github?: GitHubAdapter;
   clock?: OrchestratorClock;
   pollIntervalMs?: number;
+  /** FALCON_HOME path for git operations. Required if syncIdleAgents is needed. */
+  falconHome?: string;
 }
 
 const AUTO_ADVANCE_STAGES = new Set<IssueStage>(['TODO']);
@@ -157,6 +160,9 @@ export class OrchestratorRunner {
 
       const issue = this.options.repos.issues.getById(issueId);
       if (!issue) {
+        // Issue was deleted mid-flight. Release the agent to prevent it from being
+        // stuck in 'working' state forever. releaseAgent() safely handles missing issues.
+        this.releaseAgent(run, now);
         this.state.inFlightRuns.delete(issueId);
         continue;
       }
@@ -214,18 +220,24 @@ export class OrchestratorRunner {
     this.state.inFlightRuns.set(issue.id, run);
 
     try {
-      this.options.repos.issues.update(issue.id, {
+      const issueUpdated = this.options.repos.issues.update(issue.id, {
         assignedAgentId: agent.id,
         updatedAt: now,
       });
+      if (!issueUpdated) {
+        console.warn(`dispatchStage: issues.update returned null for issue ${issue.id}`);
+      }
 
-      this.options.repos.agents.update(agent.id, {
+      const agentUpdated = this.options.repos.agents.update(agent.id, {
         status: 'working',
         currentIssueId: issue.id,
         currentStage: issue.stage,
         lastActiveAt: now,
         updatedAt: now,
       });
+      if (!agentUpdated) {
+        console.warn(`dispatchStage: agents.update returned null for agent ${agent.id}`);
+      }
 
       const registryAgent = this.options.registry.getAgent(agent.id);
       if (registryAgent) {
@@ -301,10 +313,13 @@ export class OrchestratorRunner {
       });
     }
 
-    this.options.repos.issues.update(run.issueId, {
+    const issueUpdated = this.options.repos.issues.update(run.issueId, {
       assignedAgentId: null,
       updatedAt: now,
     });
+    if (!issueUpdated) {
+      console.warn(`releaseAgent: issues.update returned null for issue ${run.issueId}`);
+    }
   }
 
   private autoAdvanceIssue(
@@ -347,13 +362,20 @@ export class OrchestratorRunner {
     issue: IssueRecord,
     patch: IssueOrchestrationAttributes,
     now: number
-  ): void {
-    const existing = normalizeAttributes(issue.attributes);
+  ): boolean {
+    // Read fresh from repo to avoid overwriting concurrent updates
+    const fresh = this.options.repos.issues.getById(issue.id);
+    const existing = normalizeAttributes(fresh?.attributes ?? issue.attributes);
     const next = { ...existing, ...patch };
-    this.options.repos.issues.update(issue.id, {
+    const updated = this.options.repos.issues.update(issue.id, {
       attributes: next,
       updatedAt: now,
     });
+    if (!updated) {
+      console.warn(`setIssueAttributes: issues.update returned null for issue ${issue.id}`);
+      return false;
+    }
+    return true;
   }
 
   private async ensurePullRequest(issue: IssueRecord, now: number): Promise<IssueRecord | null> {
@@ -361,7 +383,8 @@ export class OrchestratorRunner {
       return issue;
     }
 
-    if (issue.prNumber && issue.prUrl) {
+    // Skip PR creation if we already have a PR number (prUrl is just metadata)
+    if (issue.prNumber) {
       return issue;
     }
 
@@ -448,11 +471,16 @@ export class OrchestratorRunner {
       .join('\n\n---\n\n');
 
     if (!body) {
-      this.options.repos.stageMessages.markRead(
+      const marked = this.options.repos.stageMessages.markRead(
         pending.map((message) => message.id),
         now,
         REVIEW_COMMENT_AUTHOR
       );
+      if (marked.length < pending.length) {
+        console.warn(
+          `maybePostReviewComment: markRead returned ${marked.length} of ${pending.length} expected messages for issue ${issue.id}`
+        );
+      }
       return;
     }
 
@@ -464,11 +492,16 @@ export class OrchestratorRunner {
         body,
       });
 
-      this.options.repos.stageMessages.markRead(
+      const marked = this.options.repos.stageMessages.markRead(
         pending.map((message) => message.id),
         now,
         REVIEW_COMMENT_AUTHOR
       );
+      if (marked.length < pending.length) {
+        console.warn(
+          `maybePostReviewComment: markRead returned ${marked.length} of ${pending.length} expected messages for issue ${issue.id}`
+        );
+      }
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : 'GitHub comment update failed';
       const message = scrubCredentials(rawMessage);
@@ -506,15 +539,74 @@ export class OrchestratorRunner {
     }
 
     try {
+      // Check PR approval status before merging
+      const prStatus = await this.options.github.getPullRequestStatus({
+        repoUrl: project.repoUrl,
+        prNumber: issue.prNumber,
+      });
+
+      if (!prStatus.isApproved) {
+        this.setIssueAttributes(
+          issue,
+          { orchestrationError: 'PR must be approved before auto-merge. Current status: ' + (prStatus.reviewDecision ?? 'no reviews') },
+          now
+        );
+        return;
+      }
+
+      if (!prStatus.isMergeable) {
+        this.setIssueAttributes(
+          issue,
+          { orchestrationError: 'PR is not mergeable. State: ' + (prStatus.mergeableState ?? 'unknown') },
+          now
+        );
+        return;
+      }
+
       await this.options.github.mergePullRequest({
         repoUrl: project.repoUrl,
         prNumber: issue.prNumber,
       });
       this.updateIssueStage(issue, 'DONE', now);
+
+      // Sync idle agents to latest main after successful merge
+      await this.syncIdleAgents(project.slug, project.defaultBranch);
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : 'GitHub merge failed';
       const message = scrubCredentials(rawMessage);
       this.setIssueAttributes(issue, { orchestrationError: message }, now);
+    }
+  }
+
+  /**
+   * Sync all idle agents to the base branch after a PR merge.
+   * This ensures agents have the latest code when picking up new work.
+   */
+  private async syncIdleAgents(projectSlug: string, baseBranch: string): Promise<void> {
+    if (!this.options.falconHome) {
+      // Skip sync if falconHome is not configured
+      return;
+    }
+
+    const idleAgents = this.options.registry
+      .listAgents(projectSlug)
+      .filter((agent) => agent.status === 'IDLE');
+
+    for (const agent of idleAgents) {
+      try {
+        await syncIdleAgentToBase({
+          falconHome: this.options.falconHome,
+          projectSlug: agent.projectSlug,
+          agentName: agent.agentName,
+          baseBranch,
+        });
+      } catch (error) {
+        // Log but don't fail the orchestration if agent sync fails
+        // The agent will sync when it picks up new work anyway
+        console.error(
+          `Failed to sync idle agent ${agent.agentName}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      }
     }
   }
 }

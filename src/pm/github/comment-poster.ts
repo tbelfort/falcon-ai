@@ -9,17 +9,20 @@ export interface UpsertBotCommentInput {
   body: string;
 }
 
+/** Maximum pages to search for existing bot comment (prevents memory exhaustion) */
+export const MAX_COMMENT_PAGES = 20; // 2000 comments max
+
 export async function upsertBotComment(input: UpsertBotCommentInput): Promise<void> {
   const { owner, repo } = parseRepoUrl(input.repoUrl);
   const marker = `<!-- falcon-bot:${input.identifier} -->`;
   const fullBody = `${marker}\n${input.body}`;
 
-  // Paginate through all comments to find existing bot comment
+  // Paginate through comments to find existing bot comment (with page limit)
   let page = 1;
   const perPage = 100;
   let existingComment: { id: number } | undefined;
 
-  while (!existingComment) {
+  while (!existingComment && page <= MAX_COMMENT_PAGES) {
     const { data: comments } = await input.octokit.rest.issues.listComments({
       owner,
       repo,

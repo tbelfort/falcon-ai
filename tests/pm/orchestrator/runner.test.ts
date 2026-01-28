@@ -52,6 +52,7 @@ function createRunner(options?: {
   clockNow?: number;
   throwOnInvoke?: boolean;
   github?: GitHubAdapter;
+  falconHome?: string;
 }) {
   const repos = createInMemoryRepos();
   const registry = new InMemoryAgentRegistry();
@@ -82,6 +83,7 @@ function createRunner(options?: {
     executor,
     presets: options?.presets ?? [createFullPipelinePreset()],
     github: options?.github,
+    falconHome: options?.falconHome,
     clock: {
       now: () => clockValue,
       sleep: async () => {},
@@ -91,16 +93,29 @@ function createRunner(options?: {
   return { repos, registry, runner };
 }
 
-function createMockGitHubAdapter(): GitHubAdapter & { mocks: ReturnType<typeof vi.fn>[] } {
+function createMockGitHubAdapter(): GitHubAdapter & {
+  createPullRequest: ReturnType<typeof vi.fn>;
+  upsertBotComment: ReturnType<typeof vi.fn>;
+  mergePullRequest: ReturnType<typeof vi.fn>;
+  getPullRequestStatus: ReturnType<typeof vi.fn>;
+  mocks: ReturnType<typeof vi.fn>[];
+} {
   const createPullRequest = vi.fn().mockResolvedValue({ number: 123, url: 'https://github.com/test/repo/pull/123' });
   const upsertBotComment = vi.fn().mockResolvedValue(undefined);
   const mergePullRequest = vi.fn().mockResolvedValue(undefined);
+  const getPullRequestStatus = vi.fn().mockResolvedValue({
+    isApproved: true,
+    isMergeable: true,
+    mergeableState: 'clean',
+    reviewDecision: 'APPROVED'
+  });
 
   return {
     createPullRequest,
     upsertBotComment,
     mergePullRequest,
-    mocks: [createPullRequest, upsertBotComment, mergePullRequest],
+    getPullRequestStatus,
+    mocks: [createPullRequest, upsertBotComment, mergePullRequest, getPullRequestStatus],
   };
 }
 
@@ -148,7 +163,8 @@ function createTestIssue(
     stage: overrides?.stage ?? 'PR_REVIEW',
     priority: 'medium',
     presetId: 'preset-1',
-    branchName: overrides?.branchName ?? 'feature/test',
+    // Use explicit undefined check to allow null to be passed
+    branchName: overrides?.branchName !== undefined ? overrides.branchName : 'feature/test',
     prNumber: overrides?.prNumber ?? null,
     prUrl: overrides?.prUrl ?? null,
     assignedAgentId: null,
@@ -569,6 +585,546 @@ describe('orchestrator runner', () => {
         expect(attrs.orchestrationError).toBe('Merge conflict detected');
         expect(updated?.stage).toBe('MERGE_READY'); // Stage unchanged on error
       });
+
+      it('checks PR approval status before merging', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.getPullRequestStatus).toHaveBeenCalledWith({
+          repoUrl: 'https://github.com/test/repo',
+          prNumber: 123,
+        });
+        expect(github.mergePullRequest).toHaveBeenCalled();
+      });
+
+      it('sets orchestrationError when PR is not approved', async () => {
+        const github = createMockGitHubAdapter();
+        github.getPullRequestStatus = vi.fn().mockResolvedValue({
+          isApproved: false,
+          isMergeable: true,
+          mergeableState: 'clean',
+          reviewDecision: 'CHANGES_REQUESTED'
+        });
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.mergePullRequest).not.toHaveBeenCalled();
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toContain('must be approved');
+        expect(updated?.stage).toBe('MERGE_READY');
+      });
+
+      it('sets orchestrationError when PR is not mergeable', async () => {
+        const github = createMockGitHubAdapter();
+        github.getPullRequestStatus = vi.fn().mockResolvedValue({
+          isApproved: true,
+          isMergeable: false,
+          mergeableState: 'conflicting',
+          reviewDecision: 'APPROVED'
+        });
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.mergePullRequest).not.toHaveBeenCalled();
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toContain('not mergeable');
+        expect(updated?.stage).toBe('MERGE_READY');
+      });
+
+      it('sets orchestrationError when issue has no branchName', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, { branchName: null });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBe('Issue branchName is required to create PRs');
+      });
+
+      it('sets orchestrationError when issue has no prNumber for merge', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'MERGE_READY',
+          prNumber: null,
+          prUrl: null,
+          attributes: { autoMerge: true },
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBe('Issue prNumber is required to merge PRs');
+      });
+    });
+
+    describe('maybePostReviewComment', () => {
+      it('posts review comment when stageMessages exist', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        // Add stage messages
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Review finding 1',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        expect(github.upsertBotComment).toHaveBeenCalledWith({
+          repoUrl: 'https://github.com/test/repo',
+          issueNumber: 123,
+          identifier: 'pr-review-summary',
+          body: 'Review finding 1',
+        });
+      });
+
+      it('concatenates multiple stageMessages with separator', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Finding 1',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+        repos.stageMessages.create({
+          id: 'msg-2',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Finding 2',
+          priority: 'normal',
+          createdAt: 1,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        expect(github.upsertBotComment).toHaveBeenCalledWith({
+          repoUrl: 'https://github.com/test/repo',
+          issueNumber: 123,
+          identifier: 'pr-review-summary',
+          body: 'Finding 1\n\n---\n\nFinding 2',
+        });
+      });
+
+      it('marks stageMessages as read after posting', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Review finding',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        const messages = repos.stageMessages.listUnreadByStage('issue-1', 'PR_HUMAN_REVIEW');
+        expect(messages.length).toBe(0);
+      });
+
+      it('does not call GitHub when no pending messages', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        await runner.tick();
+
+        expect(github.upsertBotComment).not.toHaveBeenCalled();
+      });
+
+      it('sets orchestrationError when project has no repoUrl for comment', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos, { repoUrl: null });
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Review finding',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBe('Project repoUrl is required to post PR comments');
+      });
+
+      it('sets orchestrationError when issue has no prNumber for comment', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: null,
+          prUrl: null,
+        });
+        createAgent(repos, registry);
+
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Review finding',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).toBe('Issue prNumber is required to post PR comments');
+      });
+
+      it('scrubs credentials from GitHub comment error messages', async () => {
+        const github = createMockGitHubAdapter();
+        github.upsertBotComment = vi.fn().mockRejectedValue(
+          new Error('Authentication failed for https://ghp_secret123@github.com')
+        );
+
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: 'Review finding',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        const updated = repos.issues.getById('issue-1');
+        const attrs = updated?.attributes as IssueOrchestrationAttributes;
+        expect(attrs.orchestrationError).not.toContain('ghp_secret123');
+        expect(attrs.orchestrationError).toContain('[REDACTED]');
+      });
+
+      it('handles whitespace-only messages without calling GitHub', async () => {
+        const github = createMockGitHubAdapter();
+        const { repos, registry, runner } = createRunner({ github });
+
+        createTestProject(repos);
+        createTestIssue(repos, {
+          stage: 'PR_HUMAN_REVIEW',
+          prNumber: 123,
+          prUrl: 'https://github.com/test/repo/pull/123',
+        });
+        createAgent(repos, registry);
+
+        repos.stageMessages.create({
+          id: 'msg-1',
+          issueId: 'issue-1',
+          fromStage: 'PR_REVIEW',
+          toStage: 'PR_HUMAN_REVIEW',
+          fromAgent: 'agent-1',
+          message: '   \n  ',
+          priority: 'normal',
+          createdAt: 0,
+          readAt: null,
+          readBy: null,
+        });
+
+        await runner.tick();
+
+        expect(github.upsertBotComment).not.toHaveBeenCalled();
+        // But messages should still be marked as read
+        const messages = repos.stageMessages.listUnreadByStage('issue-1', 'PR_HUMAN_REVIEW');
+        expect(messages.length).toBe(0);
+      });
+    });
+  });
+
+  describe('internal repo call validation', () => {
+    it('dispatch proceeds with warning when issues.update returns null', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { repos, registry, runner } = createRunner();
+      createAgent(repos, registry);
+      createIssue(repos);
+
+      // Spy on issues.update: return null when assigning agent (assignedAgentId set to non-null)
+      const originalUpdate = repos.issues.update.bind(repos.issues);
+      vi.spyOn(repos.issues, 'update').mockImplementation(((id: string, patch: unknown) => {
+        const p = patch as Record<string, unknown>;
+        if ('assignedAgentId' in p && p.assignedAgentId !== null) {
+          return undefined as never;
+        }
+        return originalUpdate(id, patch as never);
+      }) as unknown as typeof repos.issues.update);
+
+      await runner.tick();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('dispatchStage: issues.update returned null')
+      );
+
+      // Dispatch should still proceed (non-blocking)
+      const agent = repos.agents.getById('agent-1');
+      expect(agent?.status).toBe('working');
+
+      warnSpy.mockRestore();
+    });
+
+    it('releaseAgent logs warning when issue update returns null', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { repos, registry, runner } = createRunner();
+      createAgent(repos, registry);
+      createIssue(repos);
+
+      // First tick dispatches
+      await runner.tick();
+
+      // Delete the issue so that releaseAgent's issues.update returns null
+      repos.issues.delete('issue-1');
+
+      // Second tick: finalizeRuns calls releaseAgent
+      await runner.tick();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('releaseAgent: issues.update returned null')
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it('setIssueAttributes logs warning when update returns null', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { repos, registry, runner } = createRunner({ presets: [] }); // No presets = orchestrationError
+      createAgent(repos, registry);
+      createIssue(repos, { presetId: 'nonexistent' });
+
+      // Make issues.update return null for attribute updates
+      const originalUpdate = repos.issues.update.bind(repos.issues);
+      vi.spyOn(repos.issues, 'update').mockImplementation(((id: string, patch: unknown) => {
+        const p = patch as Record<string, unknown>;
+        if ('attributes' in p) {
+          return undefined as never;
+        }
+        return originalUpdate(id, patch as never);
+      }) as unknown as typeof repos.issues.update);
+
+      await runner.tick();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('setIssueAttributes: issues.update returned null')
+      );
+
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('syncIdleAgents behavior', () => {
+    it('auto-merge succeeds when falconHome is not configured (syncIdleAgents skips gracefully)', async () => {
+      const github = createMockGitHubAdapter();
+      // Note: falconHome is NOT set, so syncIdleAgents should skip
+      const { repos, registry, runner } = createRunner({ github });
+
+      createTestProject(repos);
+      createTestIssue(repos, {
+        stage: 'MERGE_READY',
+        prNumber: 123,
+        prUrl: 'https://github.com/test/repo/pull/123',
+        attributes: { autoMerge: true },
+      });
+      createAgent(repos, registry);
+
+      await runner.tick();
+
+      // Merge should succeed without errors
+      expect(github.mergePullRequest).toHaveBeenCalled();
+      const issue = repos.issues.getById('issue-1');
+      expect(issue?.stage).toBe('DONE');
+      // No orchestrationError should be set
+      const attrs = issue?.attributes as IssueOrchestrationAttributes | null;
+      expect(attrs?.orchestrationError).toBeUndefined();
+    });
+
+    it('auto-merge succeeds when falconHome is configured (syncIdleAgents runs)', async () => {
+      const github = createMockGitHubAdapter();
+      // Note: We set falconHome, but since registry.listAgents returns no agents for the project
+      // by default, syncIdleAgents will loop over empty array. This tests the path runs without error.
+      const { repos, registry, runner } = createRunner({
+        github,
+        falconHome: '/tmp/falcon-test',
+      });
+
+      createTestProject(repos);
+      createTestIssue(repos, {
+        stage: 'MERGE_READY',
+        prNumber: 123,
+        prUrl: 'https://github.com/test/repo/pull/123',
+        attributes: { autoMerge: true },
+      });
+      // Create an idle agent in the registry
+      createAgent(repos, registry);
+
+      await runner.tick();
+
+      // Merge should succeed
+      expect(github.mergePullRequest).toHaveBeenCalled();
+      const issue = repos.issues.getById('issue-1');
+      expect(issue?.stage).toBe('DONE');
+    });
+
+    it('releases agent when issue is deleted mid-flight', async () => {
+      const { repos, registry, runner } = createRunner();
+
+      createAgent(repos, registry);
+      createIssue(repos);
+
+      // First tick: agent gets assigned and work begins
+      await runner.tick();
+      const agent = repos.agents.getById('agent-1');
+      expect(agent?.status).toBe('working');
+
+      // Delete the issue while "in-flight" (before finalization)
+      // The agent should be released on next tick
+      repos.issues.delete('issue-1');
+
+      // Second tick: finalizeRuns should release the agent
+      await runner.tick();
+
+      const agentAfter = repos.agents.getById('agent-1');
+      expect(agentAfter?.status).toBe('idle');
+      expect(agentAfter?.currentIssueId).toBeNull();
     });
   });
 });

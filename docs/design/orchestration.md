@@ -71,6 +71,31 @@ The orchestration engine manages issue progression through workflow stages, assi
 
 The start action is only valid when both the status and stage are in their initial states: `status in {backlog, todo}` and `stage in {BACKLOG, TODO}`.
 
+### Auto-Advance Stage Behavior
+
+The orchestrator automatically advances issues through certain stages without requiring agent work:
+
+| Auto-Advance Stage | Behavior |
+|--------------------|----------|
+| `TODO` | Automatically advances to next preset stage |
+
+**Design rationale:** TODO is a transitional stage indicating an issue is ready to start. Once an issue reaches TODO, it should immediately progress to its first work stage (e.g., CONTEXT_PACK) without waiting for agent assignment at the TODO stage itself.
+
+**Note:** Only stages in the `AUTO_ADVANCE_STAGES` set will auto-advance. Adding stages requires careful consideration as it bypasses agent execution for that stage.
+
+### Human Gate Stages
+
+The orchestrator halts automatic progression at human gate stages, requiring manual intervention:
+
+| Human Gate Stage | Required Action | Orchestrator Behavior |
+|------------------|-----------------|----------------------|
+| `PR_HUMAN_REVIEW` | Human reviews PR findings in dashboard | Sets `needsHumanAttention: true`, posts review comment to GitHub |
+| `MERGE_READY` | Human approves merge (unless `autoMerge` enabled) | Checks PR approval status, merges if `autoMerge` attribute set |
+
+**Design rationale:** These stages represent critical decision points where human judgment is required. The orchestrator will not dispatch agents to these stages and will not automatically advance past them (except for auto-merge flow).
+
+**Important:** Any new stage requiring human approval must be added to the `HUMAN_GATES` set in `runner.ts`.
+
 ## Stage Progression Logic
 
 ### Transition Rules
@@ -492,6 +517,27 @@ async function executeWithRetry<T>(
 }
 ```
 
+### Error Persistence Strategy
+
+When an orchestration error occurs (stage failure, invalid transition, GitHub API error, etc.), the orchestrator:
+
+1. Sets `orchestrationError` attribute on the issue with the error message
+2. **Skips the issue in subsequent tick cycles** until the error is cleared
+3. Requires human intervention to resolve
+
+**Design rationale:** This prevents infinite retry loops that could:
+- Exhaust API rate limits
+- Spam GitHub with duplicate PRs/comments
+- Consume agent resources on unrecoverable failures
+
+**Recovery procedure:**
+1. Human reviews error in dashboard (issue shows `orchestrationError` attribute)
+2. Human resolves underlying issue (e.g., fixes branch conflict, updates config)
+3. Human clears the `orchestrationError` attribute via API/dashboard
+4. Orchestrator resumes processing the issue on next tick
+
+**Note:** This is distinct from stage-level retry logic (which may retry transient failures within a stage execution). The orchestration-level error persistence is a circuit breaker for the overall workflow.
+
 ## Human Intervention Points
 
 ### PR_HUMAN_REVIEW Stage
@@ -525,39 +571,74 @@ async function launchFixer(issueId: string): Promise<void> {
 
 ### MERGE_READY Stage
 
+The `maybeAutoMerge()` method in `OrchestratorRunner` handles auto-merge when the `autoMerge` attribute is set:
+
 ```typescript
-async function handleMergeReady(issueId: string): Promise<void> {
-  const issue = await getIssue(issueId);
-
-  // Check for merge conflicts
-  const hasConflicts = await checkMergeConflicts(issue.prNumber);
-
-  if (hasConflicts) {
-    // Flag for human resolution
-    await updateIssue(issueId, {
-      attributes: {
-        ...issue.attributes,
-        needsHumanAttention: true,
-        mergeConflict: true,
-      }
-    });
-  } else {
-    // Auto-merge
-    await mergePR(issue.prNumber);
-    await transitionIssue(issueId, 'DONE');
-    await syncIdleAgents(issue.projectId);
+async function maybeAutoMerge(issue: Issue, now: number): Promise<void> {
+  const attrs = normalizeAttributes(issue.attributes);
+  if (!attrs.autoMerge) {
+    return; // Not flagged for auto-merge
   }
+
+  // 1. Check PR approval status before merging
+  const prStatus = await github.getPullRequestStatus({
+    repoUrl: project.repoUrl,
+    prNumber: issue.prNumber,
+  });
+
+  if (!prStatus.isApproved) {
+    setIssueAttributes(issue, {
+      orchestrationError: 'PR must be approved before auto-merge. Current status: ' + (prStatus.reviewDecision ?? 'no reviews'),
+    }, now);
+    return;
+  }
+
+  if (!prStatus.isMergeable) {
+    setIssueAttributes(issue, {
+      orchestrationError: 'PR is not mergeable. State: ' + (prStatus.mergeableState ?? 'unknown'),
+    }, now);
+    return;
+  }
+
+  // 2. Merge the PR
+  await github.mergePullRequest({
+    repoUrl: project.repoUrl,
+    prNumber: issue.prNumber,
+  });
+  updateIssueStage(issue, 'DONE', now);
+
+  // 3. Sync idle agents to latest main after successful merge
+  await syncIdleAgents(project.slug, project.defaultBranch);
 }
 ```
 
+**Key behaviors:**
+- Uses `orchestrationError` attribute (string) instead of `mergeConflict` (boolean) for more informative error messages
+- Checks both approval status (`isApproved`) and mergeability (`isMergeable`) before attempting merge
+- Calls `syncIdleAgents()` after successful merge to update idle agents to latest main branch
+
+**Error tolerance for agent sync:** If `syncIdleAgents()` fails for any agent, the error is logged but does not fail the overall merge operation. Rationale: agents will sync to the latest base branch when they next pick up work, so sync failures are recoverable.
+
 ## Orchestrator Runner
+
+### Polling Configuration
+
+| Parameter | Default | Minimum | Description |
+|-----------|---------|---------|-------------|
+| `pollIntervalMs` | 2500ms | 100ms | Time between orchestrator tick cycles |
+
+**Minimum enforcement:** The orchestrator enforces a minimum poll interval of 100ms (`MIN_POLL_INTERVAL_MS`) to prevent runaway loops. Any configured value below this is clamped to 100ms.
+
+**Rationale:** 2500ms provides responsive issue progression while avoiding excessive database polling. The 100ms minimum prevents accidental CPU exhaustion from misconfiguration.
+
+### Main Loop
 
 Main loop that drives the system:
 
 ```typescript
 class OrchestratorRunner {
   private running = false;
-  private pollIntervalMs = 5000;
+  private pollIntervalMs = 2500;  // Default, minimum 100ms
 
   async start() {
     this.running = true;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Octokit } from '@octokit/rest';
-import { upsertBotComment } from '../../../src/pm/github/comment-poster.js';
+import { upsertBotComment, MAX_COMMENT_PAGES } from '../../../src/pm/github/comment-poster.js';
 
 describe('upsertBotComment', () => {
   it('updates an existing bot comment when present', async () => {
@@ -211,6 +211,46 @@ describe('upsertBotComment', () => {
     expect(createComment).not.toHaveBeenCalled();
   });
 
+  it('handles comments with null or undefined body', async () => {
+    // Comments where body is null (can happen with deleted/corrupted comments)
+    const listComments = vi.fn().mockResolvedValue({
+      data: [
+        { id: 1, body: null },
+        { id: 2, body: undefined },
+        { id: 3, body: '<!-- falcon-bot:pr-review-summary -->\nFound it' },
+      ],
+    });
+    const updateComment = vi.fn().mockResolvedValue({ data: {} });
+    const createComment = vi.fn();
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await upsertBotComment({
+      octokit,
+      repoUrl: 'acme/rocket',
+      issueNumber: 5,
+      identifier: 'pr-review-summary',
+      body: 'Updated',
+    });
+
+    // Should skip null/undefined bodies and find the matching comment
+    expect(updateComment).toHaveBeenCalledWith({
+      owner: 'acme',
+      repo: 'rocket',
+      comment_id: 3,
+      body: '<!-- falcon-bot:pr-review-summary -->\nUpdated',
+    });
+    expect(createComment).not.toHaveBeenCalled();
+  });
+
   it('stops pagination when fewer than per_page comments returned', async () => {
     // Page with fewer than 100 comments - indicates last page
     const comments = Array.from({ length: 50 }, (_, i) => ({
@@ -244,5 +284,114 @@ describe('upsertBotComment', () => {
     expect(listComments).toHaveBeenCalledTimes(1);
     expect(createComment).toHaveBeenCalled();
     expect(updateComment).not.toHaveBeenCalled();
+  });
+
+  it('stops searching at MAX_COMMENT_PAGES and creates new comment', async () => {
+    // Simulate a PR with many pages of comments (no bot comment found)
+    // Each page returns exactly 100 comments (full page = more pages exist)
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      id: i + 1,
+      body: `Regular comment ${i + 1}`,
+    }));
+
+    const listComments = vi.fn().mockResolvedValue({ data: fullPage });
+    const createComment = vi.fn().mockResolvedValue({ data: {} });
+    const updateComment = vi.fn();
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await upsertBotComment({
+      octokit,
+      repoUrl: 'acme/rocket',
+      issueNumber: 5,
+      identifier: 'pr-review-summary',
+      body: 'New comment after max pages',
+    });
+
+    // Should stop at MAX_COMMENT_PAGES (20 pages = 2000 comments max)
+    expect(listComments).toHaveBeenCalledTimes(MAX_COMMENT_PAGES);
+
+    // Verify it searched pages 1 through MAX_COMMENT_PAGES
+    for (let page = 1; page <= MAX_COMMENT_PAGES; page++) {
+      expect(listComments).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page,
+          per_page: 100,
+        })
+      );
+    }
+
+    // Should create a new comment since bot comment wasn't found
+    expect(createComment).toHaveBeenCalledWith({
+      owner: 'acme',
+      repo: 'rocket',
+      issue_number: 5,
+      body: '<!-- falcon-bot:pr-review-summary -->\nNew comment after max pages',
+    });
+    expect(updateComment).not.toHaveBeenCalled();
+  });
+
+  it('finds and updates bot comment before reaching MAX_COMMENT_PAGES', async () => {
+    // Bot comment is on page 15 (well before MAX_COMMENT_PAGES)
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      id: i + 1,
+      body: `Regular comment ${i + 1}`,
+    }));
+
+    const pageWithBotComment = [
+      ...Array.from({ length: 50 }, (_, i) => ({
+        id: 1400 + i,
+        body: `Comment ${1400 + i}`,
+      })),
+      { id: 1500, body: '<!-- falcon-bot:pr-review-summary -->\nExisting bot comment' },
+    ];
+
+    const listComments = vi.fn()
+      .mockImplementation(({ page }: { page: number }) => {
+        if (page === 15) {
+          return Promise.resolve({ data: pageWithBotComment });
+        }
+        return Promise.resolve({ data: fullPage });
+      });
+    const createComment = vi.fn();
+    const updateComment = vi.fn().mockResolvedValue({ data: {} });
+
+    const octokit = {
+      rest: {
+        issues: {
+          listComments,
+          updateComment,
+          createComment,
+        },
+      },
+    } as unknown as Octokit;
+
+    await upsertBotComment({
+      octokit,
+      repoUrl: 'acme/rocket',
+      issueNumber: 5,
+      identifier: 'pr-review-summary',
+      body: 'Updated content',
+    });
+
+    // Should stop at page 15 where bot comment was found
+    expect(listComments).toHaveBeenCalledTimes(15);
+
+    // Should update the existing comment
+    expect(updateComment).toHaveBeenCalledWith({
+      owner: 'acme',
+      repo: 'rocket',
+      comment_id: 1500,
+      body: '<!-- falcon-bot:pr-review-summary -->\nUpdated content',
+    });
+    expect(createComment).not.toHaveBeenCalled();
   });
 });

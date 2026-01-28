@@ -19,7 +19,7 @@ export const projects = sqliteTable(
     slug: text('slug').notNull(),
     description: text('description'),
     repoUrl: text('repo_url'),
-    defaultBranch: text('default_branch').default('main'),
+    defaultBranch: text('default_branch').notNull().default('main'),
     config: text('config'),
     createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
     updatedAt: integer('updated_at').notNull().default(sql`(unixepoch())`),

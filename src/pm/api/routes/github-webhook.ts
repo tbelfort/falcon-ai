@@ -26,7 +26,8 @@ interface PullRequestWebhookPayload {
   };
 }
 
-function repoMatches(projectRepoUrl: string | null, webhookRepoUrl: string): boolean {
+/** Exported for testing */
+export function repoMatches(projectRepoUrl: string | null, webhookRepoUrl: string): boolean {
   if (!projectRepoUrl) {
     return false;
   }
@@ -68,16 +69,22 @@ function verifyWebhookSignature(
 /**
  * Track processed webhook delivery IDs to prevent replay attacks.
  * Uses a time-bounded cache that auto-expires entries after 5 minutes.
+ * Cache is capped at MAX_DELIVERY_CACHE_SIZE with LRU eviction.
  */
 const processedDeliveries = new Map<string, number>();
-const DELIVERY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const DELIVERY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const MAX_DELIVERY_CACHE_SIZE = 10000; // Max entries to prevent memory exhaustion
 
-function isReplayAttack(deliveryId: string | undefined): boolean {
+/**
+ * Check if a delivery ID represents a replay attack.
+ * Also performs TTL cleanup and LRU eviction when cache is at capacity.
+ */
+export function isReplayAttack(deliveryId: string | undefined): boolean {
   if (!deliveryId) {
     return false; // Allow if no delivery ID (backwards compatibility)
   }
 
-  // Clean up expired entries
+  // Clean up expired entries first
   const now = Date.now();
   for (const [id, timestamp] of processedDeliveries) {
     if (now - timestamp > DELIVERY_CACHE_TTL_MS) {
@@ -89,13 +96,37 @@ function isReplayAttack(deliveryId: string | undefined): boolean {
     return true;
   }
 
+  // LRU eviction if cache is at capacity - remove oldest entries
+  if (processedDeliveries.size >= MAX_DELIVERY_CACHE_SIZE) {
+    // Find and remove oldest entries (first 10% of capacity to avoid frequent eviction)
+    const entriesToRemove = Math.max(1, Math.floor(MAX_DELIVERY_CACHE_SIZE * 0.1));
+    const entries = Array.from(processedDeliveries.entries())
+      .sort((a, b) => a[1] - b[1]); // Sort by timestamp ascending (oldest first)
+
+    for (let i = 0; i < entriesToRemove && i < entries.length; i++) {
+      processedDeliveries.delete(entries[i][0]);
+    }
+  }
+
   processedDeliveries.set(deliveryId, now);
   return false;
+}
+
+/** Clear the delivery cache (for testing) */
+export function clearDeliveryCache(): void {
+  processedDeliveries.clear();
+}
+
+/** Get the current cache size (for testing) */
+export function getDeliveryCacheSize(): number {
+  return processedDeliveries.size;
 }
 
 export interface GitHubWebhookOptions {
   repos: Pick<PmRepos, 'projects' | 'issues'>;
   webhookSecret?: string;
+  /** If true, require webhook secret (reject webhooks if secret is not configured). Default: true */
+  requireSecret?: boolean;
 }
 
 export function createGitHubWebhookRouter(
@@ -108,6 +139,7 @@ export function createGitHubWebhookRouter(
     'repos' in reposOrOptions ? reposOrOptions : { repos: reposOrOptions };
   const repos = options.repos;
   const webhookSecret = options.webhookSecret ?? process.env.GITHUB_WEBHOOK_SECRET;
+  const requireSecret = options.requireSecret ?? true; // Default to requiring secret for security
 
   // Use custom JSON parser that captures raw body for signature verification
   router.use(
@@ -127,6 +159,12 @@ export function createGitHubWebhookRouter(
       if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
         return sendError(res, createError('VALIDATION_ERROR', 'Invalid webhook signature'));
       }
+    } else if (requireSecret) {
+      // Secret is required but not configured - reject for security
+      return sendError(
+        res,
+        createError('VALIDATION_ERROR', 'Webhook secret not configured. Set GITHUB_WEBHOOK_SECRET environment variable.')
+      );
     }
 
     // Check for replay attacks
@@ -163,11 +201,14 @@ export function createGitHubWebhookRouter(
       return sendSuccess(res, { ok: true });
     }
 
-    repos.issues.update(issue.id, {
+    const updated = repos.issues.update(issue.id, {
       prNumber,
       prUrl: prUrl ?? issue.prUrl,
       updatedAt: unixSeconds(),
     });
+    if (!updated) {
+      console.warn(`github-webhook: issues.update returned null for issue ${issue.id}`);
+    }
 
     return sendSuccess(res, { ok: true });
   });

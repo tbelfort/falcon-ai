@@ -166,6 +166,10 @@ interface IssueAttributes {
   hasTests?: boolean;
   needsTests?: boolean;
   needsHumanAttention?: boolean;
+
+  // Auto-merge configuration
+  autoMerge?: boolean;           // Enable automatic merge when PR is approved and checks pass
+  orchestrationError?: string;   // Last error from orchestration (e.g., merge failure reason)
 }
 ```
 

@@ -79,6 +79,26 @@ Closes #${issue.number}
 }
 ```
 
+#### PR Creation Idempotency
+
+The orchestrator ensures PR creation is idempotent via local state check:
+
+```typescript
+if (issue.prNumber) {
+  return; // PR already exists, skip creation
+}
+```
+
+**Design decision:** We check local database state (`issue.prNumber`) rather than querying GitHub for existing PRs. This:
+- Avoids an extra API call on every PR_REVIEW stage tick
+- Relies on the database as source of truth for PR association
+- Requires that `prNumber` is always set after successful PR creation
+
+**Edge case:** If PR creation succeeds but database update fails, the PR would be orphaned. This is acceptable as the failure would set `orchestrationError` and require human intervention.
+
+```typescript
+```
+
 ### Post PR Findings as Comments
 
 ```typescript
@@ -146,6 +166,48 @@ ${finding.suggestion ? `**Suggestion:** ${finding.suggestion}` : ''}
 *Found by ${finding.foundBy}${finding.confirmedBy ? ` | Confirmed by ${finding.confirmedBy}` : ''} | Confidence: ${Math.round(finding.confidence * 100)}%*`;
 }
 ```
+
+#### Pagination Limits
+
+Comment pagination is capped at `MAX_COMMENT_PAGES` (20 pages = 2000 comments) to prevent memory exhaustion on PRs with spam comments. If the bot comment isn't found within this limit, a new comment is created.
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| `MAX_COMMENT_PAGES` | 20 | Prevents memory exhaustion |
+| `perPage` | 100 | GitHub API standard page size |
+
+### PR Approval Status
+
+The `getPullRequestStatus()` function determines whether a PR is approved for merge using review-based logic.
+
+**Approval Algorithm:**
+1. Fetch all reviews for the PR via REST API
+2. Sort reviews by `submitted_at` to ensure chronological processing
+3. For each reviewer, track only their most recent review state (APPROVED, CHANGES_REQUESTED, or DISMISSED)
+4. PR is considered approved if:
+   - At least one reviewer has APPROVED
+   - AND no reviewer has CHANGES_REQUESTED as their latest state
+
+**Review States Considered:**
+| State | Effect |
+|-------|--------|
+| APPROVED | Counts toward approval |
+| CHANGES_REQUESTED | Blocks approval |
+| DISMISSED | Clears previous state (neither approves nor blocks) |
+| COMMENTED | Ignored (not a decision) |
+| PENDING | Ignored (not submitted) |
+
+**Important:** This logic differs from GitHub's native `reviewDecision`, which also considers branch protection settings (CODEOWNERS, required reviewers). For repos with complex branch protection, the GitHub API will independently enforce protections at merge time.
+
+**Null Handling:**
+
+| Field | GitHub API Behavior | Our Handling |
+|-------|---------------------|--------------|
+| `mergeable` | Returns `null` while GitHub computes merge status | Defaults to `false` (fail-safe: don't merge if unknown) |
+| `mergeable_state` | May be `null` | Passed through as-is |
+| `reviewDecision` | Not available in REST API | Synthesized from review analysis: `'APPROVED'` / `'CHANGES_REQUESTED'` / `null` |
+
+**Important:** The `mergeable: null` → `false` default means the orchestrator will not auto-merge while GitHub is still computing merge status. Callers should retry after a delay if merge is blocked due to unknown mergeable state.
 
 ### Merge Handling
 
@@ -243,12 +305,53 @@ export async function handleGitHubWebhook(req: Request, res: Response) {
 
   res.sendStatus(200);
 }
+```
 
+### Issue Matching Logic
+
+When a GitHub webhook event is received, the system must find the associated issue. This uses OR-based matching to handle cases where only partial information is available:
+
+```typescript
+/**
+ * Find issue by PR number OR branch name.
+ *
+ * Matching priority:
+ * 1. Match by prNumber if present in payload
+ * 2. Fall back to match by branchName (head ref)
+ *
+ * This OR-based approach handles:
+ * - PRs created externally (have prNumber, may not have branchName set)
+ * - Issues where PR was created but prNumber wasn't recorded
+ * - Branch-based workflows where PR doesn't exist yet
+ */
+async function findIssueByPR(pullRequest: GitHubPullRequest): Promise<Issue | null> {
+  const { number: prNumber, head } = pullRequest;
+  const branchName = head?.ref;
+
+  // Try prNumber first (most reliable)
+  if (prNumber) {
+    const issue = await issueRepo.findByPrNumber(prNumber);
+    if (issue) return issue;
+  }
+
+  // Fall back to branchName
+  if (branchName) {
+    const issue = await issueRepo.findByBranchName(branchName);
+    if (issue) return issue;
+  }
+
+  return null;
+}
+```
+
+**Important:** Both `prNumber` and `branchName` are optional on the issue. The webhook handler must check both fields to ensure proper issue correlation across different workflow states.
+
+```typescript
 async function handlePREvent(payload: any) {
   const { action, pull_request } = payload;
 
-  // Find associated issue
-  const issue = await findIssueByPRNumber(pull_request.number);
+  // Find associated issue using OR-based matching
+  const issue = await findIssueByPR(pull_request);
   if (!issue) return;
 
   switch (action) {
