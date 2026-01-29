@@ -10,8 +10,8 @@ import { createInterface } from 'readline';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
-import { getDatabase } from '../../storage/db.js';
-import { seedBaselines } from '../../storage/seed/baselines.js';
+import { getDatabase } from '../../guardrail/storage/db.js';
+import { seedBaselines } from '../../guardrail/storage/seed/baselines.js';
 
 /**
  * Validate user-provided input strings.

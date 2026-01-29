@@ -7,10 +7,10 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import fs from 'fs';
-import { getDatabase, getDatabasePath } from '../../storage/db.js';
+import { getDatabase, getDatabasePath } from '../../guardrail/storage/db.js';
 import { findConfigPath, parseConfig } from '../../config/loader.js';
 import { resolveScope } from '../../config/scope-resolver.js';
-import { checkBaselinesSeeded } from '../../storage/seed/baselines.js';
+import { checkBaselinesSeeded } from '../../guardrail/storage/seed/baselines.js';
 
 interface DoctorCheck {
   name: string;

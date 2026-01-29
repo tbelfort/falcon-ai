@@ -5,9 +5,9 @@
  */
 
 import { Command } from 'commander';
-import { getDatabase } from '../../storage/db.js';
+import { getDatabase } from '../../guardrail/storage/db.js';
 import { resolveScope, ScopeResolutionError } from '../../config/scope-resolver.js';
-import { KillSwitchService } from '../../services/kill-switch.service.js';
+import { KillSwitchService } from '../../guardrail/services/kill-switch.service.js';
 
 export const pauseCommand = new Command('pause')
   .description('Pause pattern creation for the current project')

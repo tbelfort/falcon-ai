@@ -10,12 +10,48 @@ The core innovation is closing the feedback loop that existing systems (like say
 
 ## Key Architecture
 
-### Workflow Pipeline
+### System Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **Backend API** | `src/pm/api/` | Express REST API + WebSocket hub |
+| **Orchestrator** | `src/pm/orchestrator/` | Polls issues, dispatches agents, manages stage transitions |
+| **Agent Infrastructure** | `src/pm/agents/` | Lifecycle, provisioning, git sync, CLI invokers, output streaming |
+| **Dashboard** | `apps/pm-dashboard/` | React SPA with Kanban board, drag-drop, real-time updates |
+| **CLI** | `src/cli/` | Commander.js CLI for init, workspaces, projects, injection, health |
+| **GitHub Integration** | `src/pm/github/` | PR creation, bot comments, merging, webhook processing |
+| **PM Database** | `src/pm/db/` | SQLite via Drizzle ORM (11 tables) — workflow state |
+| **Core Domain** | `src/pm/core/` | Types, stage machine, services, repos, errors |
+| **Attribution Engine** | `src/guardrail/attribution/` | Traces PR findings to guidance — agent, decision tree, noncompliance |
+| **Injection System** | `src/guardrail/injection/` | Selects/formats warnings for agent prompts (6-cap) |
+| **Evolution System** | `src/guardrail/evolution/` | Confidence decay, alert promotion, salience detection |
+| **Workflow Hooks** | `src/guardrail/workflow/` | Hooks into context-pack, spec, PR review for injection/attribution |
+| **Guardrail Database** | `src/guardrail/storage/` | SQLite (13 tables) — patterns, principles, alerts, injection logs |
+
+### The 14-Stage Workflow Pipeline
+
 ```
-LINEAR ISSUE → CONTEXT PACK → SPEC → IMPLEMENTATION → PR REVIEW → PATTERN ATTRIBUTION
-                    ↑                                                      │
-                    └──────────── FEEDBACK LOOP (warnings injected) ───────┘
+BACKLOG → TODO → CONTEXT_PACK → CONTEXT_REVIEW → SPEC → SPEC_REVIEW
+                                       │                      │
+                                       ▼                      ▼
+                                   IMPLEMENT ◄──────────── (loop)
+                                       │
+                                       ▼
+                                   PR_REVIEW → PR_HUMAN_REVIEW → TESTING → DOC_REVIEW → MERGE_READY → DONE
+                                       ▲            │               │
+                                       │            ▼               ▼
+                                     FIXER     (human gate)     IMPLEMENT (loop)
 ```
+
+Exact transitions defined in `src/pm/core/stage-machine.ts`. Auto-advance: TODO. Human gates: PR_HUMAN_REVIEW, MERGE_READY.
+
+### Key Interfaces
+- **AgentInvoker** (`src/pm/agents/invokers/agent-invoker.ts`): `invokeStage(args) → { runId }` — implemented by ClaudeCodeInvoker, CodexCliInvoker, FakeAgentInvoker
+- **AgentRegistry** (`src/pm/agents/registry.ts`): In-memory tracking of agent status (INIT/IDLE/CHECKOUT/WORKING/DONE/ERROR)
+- **GitHubAdapter** (`src/pm/github/adapter.ts`): `createPullRequest()`, `upsertBotComment()`, `mergePullRequest()`, `getPullRequestStatus()`
+- **PmRepos** (`src/pm/core/repos/index.ts`): Aggregate of all 8 PM repository interfaces
+- **AttributionOrchestrator** (`src/guardrail/attribution/orchestrator.ts`): `attributeFinding(input) → AttributionResult` — full attribution pipeline
+- **EvidenceBundle** / **TaskProfile** (`src/guardrail/schemas/index.ts`): Core guardrail types for attribution and injection
 
 ### Pattern Attribution Flow
 1. PR Review scouts find issues, judges confirm them
@@ -30,6 +66,20 @@ LINEAR ISSUE → CONTEXT PACK → SPEC → IMPLEMENTATION → PR REVIEW → PATT
 - **DerivedPrinciple**: Baseline guardrails or derived from pattern clusters
 - **ExecutionNoncompliance**: When agent ignored correct guidance (distinct from Pattern)
 - **ProvisionalAlert**: Short-lived alerts for CRITICAL findings not yet meeting pattern gate
+
+## System Documentation
+
+The `docs/system/` directory contains authoritative technical documentation derived from source code. When conflicting with `docs/design/` or other docs, `docs/system/` is authoritative.
+
+| Document | Purpose |
+|----------|---------|
+| `docs/system/architecture-simple.md` | 40,000ft overview — both subsystems, pipeline, code map |
+| `docs/system/architecture.md` | Comprehensive reference — 18 sections covering PM + guardrail subsystems |
+| `docs/system/db.md` | PM database schema — 11 tables, columns, indexes, relationships |
+| `docs/system/schemas.md` | API contracts — endpoints, DTOs, validation, WebSocket |
+| `docs/system/agents.md` | Agent infrastructure — lifecycle, provisioning, invokers |
+| `docs/system/security.md` | Security measures — HTTP, WebSocket, Git, credentials |
+| `docs/system/ux.md` | Dashboard UX — components, stores, WebSocket integration |
 
 ## Repository Structure
 
@@ -51,19 +101,42 @@ After `falcon init`, the following files are installed in your project:
 Falcon-ai source structure:
 
 ```
-CORE/                    # Source files (copied during init)
+src/
+├── cli/                    # CLI entry point (Commander.js, 12 commands)
+├── config/                 # YAML config loader, scope resolver (shared infrastructure)
+├── types/                  # Ambient type declarations
+├── guardrail/              # All guardrail modules grouped here
+│   ├── attribution/        # Pattern attribution engine
+│   ├── injection/          # Warning injection system
+│   ├── evolution/          # Pattern lifecycle maintenance
+│   ├── workflow/           # Integration hooks (PM ↔ guardrail bridge)
+│   ├── storage/            # Guardrail SQLite DB + 13 repos
+│   ├── schemas/            # Zod schemas for guardrail entities
+│   ├── services/           # KillSwitchService
+│   ├── metrics/            # Attribution health metrics
+│   └── utils/              # Category mapping utilities
+└── pm/                     # Project management subsystem
+    ├── core/               # Domain model (types, stage machine, services, repos)
+    ├── api/                # Express REST API + WebSocket hub + routes
+    ├── orchestrator/       # Poll loop, dispatch, preset resolution
+    ├── agents/             # Lifecycle, provisioning, invokers, output streaming
+    ├── github/             # PR creation, comments, merge, webhooks
+    ├── db/                 # SQLite + Drizzle ORM (schema, connection, repos)
+    └── contracts/          # DTOs and WebSocket types
+
+apps/pm-dashboard/          # React SPA (Vite + Tailwind + Zustand + dnd-kit)
+
+docs/system/                # Authoritative system documentation (see above)
+
+CORE/                       # Source files (copied during init)
 ├── TASKS/WORKFLOW/
 ├── ROLES/
-├── commands/            # → .claude/commands/
-├── agents/              # → .claude/agents/
+├── commands/               # → .claude/commands/
+├── agents/                 # → .claude/agents/
 └── TEMPLATES/
 
-specs/                   # Implementation specifications
-├── spec-pattern-attribution-v1.1.md   # Main system spec
-├── implementation-plan-master.md       # Master implementation plan
-└── phases/              # Detailed phase plans (1-5)
-
-ai_docs/                 # AI-generated documentation and research
+specs/                      # Implementation specifications
+ai_docs/                    # AI-generated documentation and research
 ```
 
 ## Development Workflow

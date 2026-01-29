@@ -11,9 +11,9 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 import { randomUUID, createHash } from 'crypto';
-import { getDatabase } from '../../storage/db.js';
+import { getDatabase } from '../../guardrail/storage/db.js';
 import { canonicalizeGitUrl } from '../../config/url-utils.js';
-import { seedBaselines } from '../../storage/seed/baselines.js';
+import { seedBaselines } from '../../guardrail/storage/seed/baselines.js';
 
 interface InitOptions {
   workspace?: string;

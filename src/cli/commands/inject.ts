@@ -8,10 +8,10 @@
 import { Command } from 'commander';
 import { loadSessionState } from '../../config/session.js';
 import { resolveScope, ScopeResolutionError } from '../../config/scope-resolver.js';
-import { getDatabase } from '../../storage/db.js';
-import { beforeContextPackAgent } from '../../workflow/context-pack-hook.js';
-import { beforeSpecAgent } from '../../workflow/spec-hook.js';
-import type { ContextPackMetadata } from '../../injection/context-pack-metadata.js';
+import { getDatabase } from '../../guardrail/storage/db.js';
+import { beforeContextPackAgent } from '../../guardrail/workflow/context-pack-hook.js';
+import { beforeSpecAgent } from '../../guardrail/workflow/spec-hook.js';
+import type { ContextPackMetadata } from '../../guardrail/injection/context-pack-metadata.js';
 
 interface InjectOptions {
   format?: 'markdown' | 'claude-hook';
