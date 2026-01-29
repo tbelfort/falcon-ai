@@ -77,17 +77,18 @@ src/
 ├── cli/                         # CLI entry point and commands
 │   ├── index.ts                 # Commander.js app (15 registered commands)
 │   └── commands/                # Individual command modules
-├── attribution/                 # Pattern attribution engine (Phase 2)
-├── injection/                   # Warning injection system (Phase 3)
-├── workflow/                    # Workflow integration hooks (Phase 4)
-├── evolution/                   # Pattern lifecycle maintenance (Phase 5)
-├── storage/                     # Guardrail database + repositories
-├── schemas/                     # Zod schemas for all guardrail entities
-├── config/                      # YAML config loader, scope resolver
-├── metrics/                     # Attribution health metrics
-├── services/                    # Kill switch service
-├── types/                       # Shared WS type definitions
-├── utils/                       # Category mapping utilities
+├── config/                      # YAML config loader, scope resolver (shared)
+├── types/                       # Shared type definitions
+├── guardrail/                   # All guardrail modules grouped here
+│   ├── attribution/             # Pattern attribution engine (Phase 2)
+│   ├── injection/               # Warning injection system (Phase 3)
+│   ├── workflow/                # Workflow integration hooks (Phase 4)
+│   ├── evolution/               # Pattern lifecycle maintenance (Phase 5)
+│   ├── storage/                 # Guardrail database + repositories
+│   ├── schemas/                 # Zod schemas for all guardrail entities
+│   ├── metrics/                 # Attribution health metrics
+│   ├── services/                # Kill switch service
+│   └── utils/                   # Category mapping utilities
 └── pm/
     ├── core/                    # Domain model
     ├── api/                     # HTTP + WebSocket

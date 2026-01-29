@@ -161,6 +161,49 @@ src/
 apps/pm-dashboard/             # React SPA (Vite + Tailwind + Zustand + dnd-kit)
 ```
 
+## Source Code Organization Principles
+
+The `src/` directory uses a two-tier structure: subsystem namespaces and shared root modules.
+
+**Subsystem namespaces** group related modules under a single directory:
+- `src/pm/` — Project management subsystem (workflow, agents, API, database)
+- `src/guardrail/` — Guardrail subsystem (attribution, injection, evolution, storage)
+
+**Shared root modules** remain at the `src/` root when imported by multiple subsystems or serving as ambient infrastructure:
+- `src/config/` — Imported by CLI and transitively by both subsystems (scope resolution touches guardrail DB)
+- `src/types/` — Ambient TypeScript declarations (`declare module`) not imported via path
+- `src/cli/` — Entry point that orchestrates both subsystems
+
+**Rule:** If a module belongs exclusively to one subsystem, place it under that subsystem's namespace. If imported by both subsystems or by the CLI layer, keep it at `src/` root. Never place shared infrastructure inside a subsystem namespace.
+
+## Package Exports
+
+The `package.json` `exports` field defines the public API surface for external consumers.
+
+**Clean names:** Export paths use short, consumer-friendly names that do not mirror internal directory structure:
+- `falcon-ai/workflow` (not `falcon-ai/guardrail/workflow`)
+- `falcon-ai/attribution` (not `falcon-ai/guardrail/attribution`)
+
+**Disambiguation prefix:** When exports from different subsystems could collide, use a subsystem prefix:
+- `falcon-ai/pm-contracts` (PM subsystem contracts, distinguished from guardrail modules)
+
+**Default export:** The root export (`.`) maps to `workflow`, the primary integration point for agent hooks.
+
+| Export Path | Internal Path | Purpose |
+|-------------|---------------|---------|
+| `.` / `./workflow` | `guardrail/workflow/` | Workflow integration hooks (primary API) |
+| `./attribution` | `guardrail/attribution/` | Pattern attribution engine |
+| `./injection` | `guardrail/injection/` | Warning injection system |
+| `./evolution` | `guardrail/evolution/` | Pattern lifecycle |
+| `./storage` | `guardrail/storage/` | Guardrail database |
+| `./schemas` | `guardrail/schemas/` | Zod schemas |
+| `./metrics` | `guardrail/metrics/` | Attribution health metrics |
+| `./services` | `guardrail/services/` | Kill switch service |
+| `./config` | `config/` | YAML config loader |
+| `./pm-contracts` | `pm/contracts/` | PM HTTP/WS types |
+
+When adding a new export, use a clean name and add it to this table.
+
 ## Key Interfaces
 
 - **AgentInvoker** (`src/pm/agents/invokers/agent-invoker.ts`): `invokeStage(args) → { runId }` — implemented by ClaudeCodeInvoker, CodexCliInvoker, FakeAgentInvoker
